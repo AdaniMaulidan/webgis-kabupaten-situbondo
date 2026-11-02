@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="initial-scale=1,user-scalable=no,maximum-scale=1,width=device-width">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="description" content="Peta Interaktif WebGIS Kabupaten Situbondo dengan 8 Layer Geospasial BIG Skala 1:25.000.">
+    <title>Peta WebGIS — WebGIS &amp; Monitoring Kabupaten Situbondo</title>
+
+    <!-- Leaflet & qgis2web Core Styles (Preserved from Original Export) -->
+    <link rel="stylesheet" href="css/leaflet.css">
+    <link rel="stylesheet" href="css/L.Control.Layers.Tree.css">
+    <link rel="stylesheet" href="css/L.Control.Locate.min.css">
+    <link rel="stylesheet" href="css/qgis2web.css">
+    <link rel="stylesheet" href="css/fontawesome-all.min.css">
+    <link rel="stylesheet" href="css/MarkerCluster.css">
+    <link rel="stylesheet" href="css/MarkerCluster.Default.css">
+    <link rel="stylesheet" href="css/leaflet.photon.css">
+    <link rel="stylesheet" href="css/leaflet-measure.css">
+
+    <!-- Dashboard Design System & Map Custom Enhancements -->
+    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="assets/css/map-custom.css">
+    <link rel="stylesheet" href="assets/css/responsive.css">
+</head>
+<body class="dashboard-body">
+
+    <div class="app-shell">
+        <!-- Mobile Sidebar Backdrop -->
+        <div id="sidebarBackdrop" class="sidebar-backdrop"></div>
+
+        <!-- ==================== SIDEBAR NAVIGATION ==================== -->
+        <aside class="app-sidebar" aria-label="Navigasi Utama">
+            <div class="sidebar-brand">
+                <div class="brand-logo" aria-hidden="true">
+                    <i class="fas fa-map-marked-alt"></i>
+                </div>
+                <div class="brand-text">
+                    <span class="brand-title">WebGIS Situbondo</span>
+                    <span class="brand-subtitle">Monitoring Panel</span>
+                </div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="nav-section-label">Menu</div>
+                <a href="index.html" class="nav-link">
+                    <i class="fas fa-th-large"></i>
+                    <span class="nav-item-text">Dashboard</span>
+                </a>
+                <a href="peta.html" class="nav-link active">
+                    <i class="fas fa-globe-asia"></i>
+                    <span class="nav-item-text">Peta WebGIS</span>
+                    <span class="nav-item-badge">8 Layer</span>
+                </a>
+                <a href="kalender.html" class="nav-link">
+                    <i class="fas fa-calendar-check"></i>
+                    <span class="nav-item-text">Kalender &amp; Tugas</span>
+                </a>
+                <a href="monitoring.html" class="nav-link">
+                    <i class="fas fa-chart-bar"></i>
+                    <span class="nav-item-text">Monitoring</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="sidebar-footer-icon">
+                    <i class="fas fa-layer-group"></i>
+                </div>
+                <div class="sidebar-footer-info">
+                    <span class="sidebar-footer-title">RBI BIG 1:25.000</span>
+                    <span class="sidebar-footer-meta">Kab. Situbondo</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ==================== MAIN CONTENT WRAPPER ==================== -->
+        <div class="app-main">
+            <!-- Top Header / Navbar -->
+            <header class="app-header">
+                <div class="header-left">
+                    <button id="sidebarToggleBtn" class="sidebar-toggle-btn" type="button" aria-label="Toggle Sidebar">
+                        <i class="fas fa-bars"></i>
+                    </button>
+                    <div class="header-title-group">
+                        <h1 class="header-page-title">Peta WebGIS</h1>
+                    </div>
+                </div>
+
+                <div class="header-right">
+                    <div class="sync-status-pill" title="Status Layer Geospasial">
+                        <span id="headerSyncDot" class="sync-dot"></span>
+                        <span id="headerSyncText" class="sync-text-label">8 Layer Aktif</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Map Full-Height Content -->
+            <main class="page-content page-map-full">
+                <div id="mapWorkspaceCard" class="map-workspace-card">
+                    <!-- Map Control Toolbar -->
+                    <div class="map-toolbar-bar">
+                        <div class="toolbar-group">
+                            <span id="mapActiveLayerBadge" class="badge badge-info">
+                                <i class="fas fa-layer-group"></i> 8 / 8 Layer
+                            </span>
+
+                            <!-- Instant Village & Facility Search -->
+                            <div class="map-search-container">
+                                <div class="input-search-wrapper" style="min-width:240px;">
+                                    <i class="fas fa-search"></i>
+                                    <input id="mapSearchVillageInput" type="search" class="form-input" placeholder="Cari desa, kecamatan, objek..." aria-label="Cari di Peta" autocomplete="off">
+                                </div>
+                                <div id="mapSearchResults" class="map-search-results" role="listbox" aria-label="Hasil Pencarian Peta"></div>
+                            </div>
+                        </div>
+
+                        <div class="toolbar-group">
+                            <!-- Polygon Opacity Slider -->
+                            <div class="opacity-control-group" title="Transparansi Layer">
+                                <i class="fas fa-adjust"></i>
+                                <span>Opasitas:</span>
+                                <input id="mapOpacityRange" type="range" min="0.1" max="1" step="0.05" value="0.65" aria-label="Opasitas Layer Area">
+                                <span id="mapOpacityValue">65%</span>
+                            </div>
+
+                            <!-- Basemap Selector -->
+                            <select id="mapBasemapSelect" class="form-select" aria-label="Pilih Peta Dasar">
+                                <option value="osm" selected>Peta Jalan</option>
+                                <option value="satellite">Citra Satelit</option>
+                                <option value="light">Topografi</option>
+                                <option value="blank">Polos</option>
+                            </select>
+
+                            <button id="mapResetBoundsBtn" type="button" class="btn btn-outline btn-sm" title="Reset Tampilan Peta">
+                                <i class="fas fa-compress-arrows-alt"></i>
+                                <span>Reset</span>
+                            </button>
+
+                            <button id="mapFullscreenBtn" type="button" class="btn btn-primary btn-sm" title="Mode Layar Penuh">
+                                <i class="fas fa-expand"></i>
+                                <span>Layar Penuh</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Map Canvas + Loading Overlay -->
+                    <div class="map-canvas-container">
+                        <div id="mapLoadingOverlay" class="map-loading-overlay" aria-live="polite">
+                            <div class="map-spinner"></div>
+                            <div style="font-weight:700;font-size:0.9rem;">Memuat Peta Situbondo...</div>
+                        </div>
+                        <div id="map" role="application" aria-label="Peta Interaktif Kabupaten Situbondo"></div>
+                    </div>
+
+                    <!-- Map Status & Real-Time Coordinate Bar -->
+                    <div class="map-status-footer">
+                        <div>
+                            <i class="fas fa-compass" style="color:var(--accent-400);margin-right:4px;"></i>
+                            <span>WGS 84 &bull; RBI BIG 1:25.000</span>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:0.5rem;">
+                            <span id="mapZoomDisplay" class="map-coord-pill">Zoom: 11</span>
+                            <span id="mapCoordDisplay" class="map-coord-pill">Lat: -7.75860 | Lng: 114.01530</span>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- ==================== Core Dashboard Config & App Shell ==================== -->
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/app.js"></script>
+
+    <!-- ==================== Original qgis2web Libraries (Preserved) ==================== -->
+    <script src="js/qgis2web_expressions.js"></script>
+    <script src="js/leaflet.js"></script>
+    <script src="js/L.Control.Layers.Tree.min.js"></script>
+    <script src="js/L.Control.Locate.min.js"></script>
+    <script src="js/leaflet.rotatedMarker.js"></script>
+    <script src="js/leaflet.pattern.js"></script>
+    <script src="js/leaflet-hash.js"></script>
+    <script src="js/Autolinker.min.js"></script>
+    <script src="js/rbush.min.js"></script>
+    <script src="js/labelgun.min.js"></script>
+    <script src="js/labels.js"></script>
+    <script src="js/leaflet.photon.js"></script>
+    <script src="js/leaflet-measure.js"></script>
+    <script src="js/leaflet.markercluster.js"></script>
+
+    <!-- ==================== 8 BIG GeoJSON Data Layers (Preserved) ==================== -->
+    <script src="data/ADMINISTRASIDESA_AR_25K_0.js"></script>
+    <script src="data/AGRISAWAH_AR_25K_1.js"></script>
+    <script src="data/PEMUKIMAN_AR_25K_2.js"></script>
+    <script src="data/SUNGAI_LN_25K_3.js"></script>
+    <script src="data/JALAN_LN_25K_4.js"></script>
+    <script src="data/PEMERINTAHAN_PT_25K_5.js"></script>
+    <script src="data/PENDIDIKAN_PT_25K_6.js"></script>
+    <script src="data/SARANAIBADAH_PT_25K_7.js"></script>
+
+    <!-- ==================== Leaflet Map & 8 BIG Layers Initialization ==================== -->
+    <script>
+        var map = L.map('map', {
+            zoomControl: false, maxZoom: 28, minZoom: 1
+        }).fitBounds([[-8.026516436294546, 113.54513681883124], [-7.490798897883642, 114.48547485453135]]);
+
+        var hash = new L.Hash(map);
+        map.attributionControl.setPrefix(
+            '<a href="https://github.com/qgis2web/qgis2web" target="_blank">qgis2web</a> &middot; ' +
+            '<a href="https://leafletjs.com" title="A JS library for interactive maps">Leaflet</a> &middot; ' +
+            '<a href="https://qgis.org">QGIS</a> &middot; BIG 1:25K'
+        );
+
+        var autolinker = new Autolinker({ truncate: { length: 30, location: 'smart' } });
+
+        // Preserved helper from qgis2web
+        function removeEmptyRowsFromPopupContent(content, feature) {
+            var tempDiv = document.createElement('div');
+            tempDiv.innerHTML = content;
+            var rows = tempDiv.querySelectorAll('tr');
+            for (var i = 0; i < rows.length; i++) {
+                var td = rows[i].querySelector('td.visible-with-data');
+                var key = td ? td.id : '';
+                if (td && td.classList.contains('visible-with-data') && feature.properties[key] == null) {
+                    rows[i].parentNode.removeChild(rows[i]);
+                }
+            }
+            return tempDiv.innerHTML;
+        }
+
+        // Preserved media popup handler from qgis2web
+        function addClassToPopupIfMedia(content, popup) {
+            var tempDiv = document.createElement('div');
+            tempDiv.innerHTML = content;
+            var imgTd = tempDiv.querySelector('td img');
+            if (imgTd) {
+                var src = imgTd.getAttribute('src');
+                if (/\.(jpg|jpeg|png|gif|bmp|webp|avif)$/i.test(src)) {
+                    popup._contentNode.classList.add('media');
+                    var img = popup._contentNode.querySelector('td img');
+                    if (img) {
+                        if (img.complete && img.naturalHeight > 0) {
+                            popup.update();
+                        } else {
+                            img.addEventListener('load', function () { popup.update(); });
+                            img.addEventListener('error', function () { popup.update(); });
+                        }
+                    }
+                } else if (/\.(mp3|wav|ogg|aac)$/i.test(src)) {
+                    var audio = document.createElement('audio');
+                    audio.controls = true;
+                    audio.src = src;
+                    imgTd.parentNode.replaceChild(audio, imgTd);
+                    popup._contentNode.classList.add('media');
+                    setTimeout(function () {
+                        popup.setContent(tempDiv.innerHTML);
+                        popup.update();
+                    }, 10);
+                } else if (/\.(mp4|webm|ogg|mov)$/i.test(src)) {
+                    var video = document.createElement('video');
+                    video.controls = true;
+                    video.src = src;
+                    video.style.width = "400px";
+                    video.style.height = "300px";
+                    video.style.maxHeight = "60vh";
+                    video.style.maxWidth = "60vw";
+                    imgTd.parentNode.replaceChild(video, imgTd);
+                    popup._contentNode.classList.add('media');
+                    video.addEventListener('loadedmetadata', function () { popup.update(); });
+                    setTimeout(function () {
+                        popup.setContent(tempDiv.innerHTML);
+                        popup.update();
+                    }, 10);
+                } else {
+                    popup._contentNode.classList.remove('media');
+                }
+            } else {
+                popup._contentNode.classList.remove('media');
+            }
+        }
+
+        // Core Map Controls (Zoom, Locate, Measure)
+        var zoomControl = L.control.zoom({ position: 'topleft' }).addTo(map);
+        L.control.locate({ locateOptions: { maxZoom: 19 } }).addTo(map);
+
+        var measureControl = new L.Control.Measure({
+            position: 'topleft',
+            primaryLengthUnit: 'meters',
+            secondaryLengthUnit: 'kilometers',
+            primaryAreaUnit: 'sqmeters',
+            secondaryAreaUnit: 'hectares'
+        });
+        measureControl.addTo(map);
+        var measureToggleEl = document.getElementsByClassName('leaflet-control-measure-toggle')[0];
+        if (measureToggleEl) {
+            measureToggleEl.innerHTML = '';
+            measureToggleEl.className += ' fas fa-ruler';
+        }
+
+        var bounds_group = new L.featureGroup([]);
+        function setBounds() {}
+
+        // 1. LAYER: ADMINISTRASIDESA_AR_25K_0
+        function pop_ADMINISTRASIDESA_AR_25K_0(feature, layer) {
+            var content = window.buildEnhancedPopupHtml
+                ? window.buildEnhancedPopupHtml('Batas Administrasi Desa', feature, autolinker)
+                : '';
+            layer.on('popupopen', function (e) {
+                addClassToPopupIfMedia(content, e.popup);
+            });
+            layer.bindPopup(content, { maxHeight: 380 });
+        }
+
+        function style_ADMINISTRASIDESA_AR_25K_0_0() {
+            return {
+                pane: 'pane_ADMINISTRASIDESA_AR_25K_0',
+                opacity: 1,
+                color: 'rgba(35,35,35,0.85)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0,
+                fill: true,
+                fillOpacity: 0.65,
+                fillColor: 'rgba(190,207,80,1.0)',
+                interactive: true
+            };
+        }
+        map.createPane('pane_ADMINISTRASIDESA_AR_25K_0');
+        map.getPane('pane_ADMINISTRASIDESA_AR_25K_0').style.zIndex = 400;
+        map.getPane('pane_ADMINISTRASIDESA_AR_25K_0').style['mix-blend-mode'] = 'normal';
+        var layer_ADMINISTRASIDESA_AR_25K_0 = new L.geoJson(json_ADMINISTRASIDESA_AR_25K_0, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_ADMINISTRASIDESA_AR_25K_0',
+            layerName: 'layer_ADMINISTRASIDESA_AR_25K_0',
+            pane: 'pane_ADMINISTRASIDESA_AR_25K_0',
+            onEachFeature: pop_ADMINISTRASIDESA_AR_25K_0,
+            style: style_ADMINISTRASIDESA_AR_25K_0_0
+        });
+        bounds_group.addLayer(layer_ADMINISTRASIDESA_AR_25K_0);
+        map.addLayer(layer_ADMINISTRASIDESA_AR_25K_0);
+
+        // 2. LAYER: AGRISAWAH_AR_25K_1
+        function pop_AGRISAWAH_AR_25K_1(feature, layer) {
+            var content = window.buildEnhancedPopupHtml
+                ? window.buildEnhancedPopupHtml('Area Persawahan', feature, autolinker)
+                : '';
+            layer.on('popupopen', function (e) {
+                addClassToPopupIfMedia(content, e.popup);
+            });
+            layer.bindPopup(content, { maxHeight: 380 });
+        }
+
+        function style_AGRISAWAH_AR_25K_1_0() {
+            return {
+                pane: 'pane_AGRISAWAH_AR_25K_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,0.75)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 0.8,
+                fill: true,
+                fillOpacity: 0.65,
+                fillColor: 'rgba(231,113,72,1.0)',
+                interactive: true
+            };
+        }
+        map.createPane('pane_AGRISAWAH_AR_25K_1');
+        map.getPane('pane_AGRISAWAH_AR_25K_1').style.zIndex = 401;
+        map.getPane('pane_AGRISAWAH_AR_25K_1').style['mix-blend-mode'] = 'normal';
+        var layer_AGRISAWAH_AR_25K_1 = new L.geoJson(json_AGRISAWAH_AR_25K_1, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_AGRISAWAH_AR_25K_1',
+            layerName: 'layer_AGRISAWAH_AR_25K_1',
+            pane: 'pane_AGRISAWAH_AR_25K_1',
+            onEachFeature: pop_AGRISAWAH_AR_25K_1,
+            style: style_AGRISAWAH_AR_25K_1_0
+        });
+        bounds_group.addLayer(layer_AGRISAWAH_AR_25K_1);
+        map.addLayer(layer_AGRISAWAH_AR_25K_1);
+
+        // 3. LAYER: PEMUKIMAN_AR_25K_2
+        function pop_PEMUKIMAN_AR_25K_2(feature, layer) {
+            var content = window.buildEnhancedPopupHtml
+                ? window.buildEnhancedPopupHtml('Area Permukiman', feature, autolinker)
+                : '';
+            layer.on('popupopen', function (e) {
+                addClassToPopupIfMedia(content, e.popup);
+            });
+            layer.bindPopup(content, { maxHeight: 380 });
+        }
+
+        function style_PEMUKIMAN_AR_25K_2_0() {
+            return {
+                pane: 'pane_PEMUKIMAN_AR_25K_2',
+                opacity: 1,
+                color: 'rgba(35,35,35,0.75)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 0.8,
+                fill: true,
+                fillOpacity: 0.65,
+                fillColor: 'rgba(190,207,80,1.0)',
+                interactive: true
+            };
+        }
+        map.createPane('pane_PEMUKIMAN_AR_25K_2');
+        map.getPane('pane_PEMUKIMAN_AR_25K_2').style.zIndex = 402;
+        map.getPane('pane_PEMUKIMAN_AR_25K_2').style['mix-blend-mode'] = 'normal';
+        var layer_PEMUKIMAN_AR_25K_2 = new L.geoJson(json_PEMUKIMAN_AR_25K_2, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_PEMUKIMAN_AR_25K_2',
+            layerName: 'layer_PEMUKIMAN_AR_25K_2',
+            pane: 'pane_PEMUKIMAN_AR_25K_2',
+            onEachFeature: pop_PEMUKIMAN_AR_25K_2,
+            style: style_PEMUKIMAN_AR_25K_2_0
+        });
+        bounds_group.addLayer(layer_PEMUKIMAN_AR_25K_2);
+        map.addLayer(layer_PEMUKIMAN_AR_25K_2);
+
+        // 4. LAYER: SUNGAI_LN_25K_3
+        function pop_SUNGAI_LN_25K_3(feature, layer) {
+            var content = window.buildEnhancedPopupHtml
+                ? window.buildEnhancedPopupHtml('Jaringan Sungai', feature, autolinker)
+                : '';
+            layer.on('popupopen', function (e) {
+                addClassToPopupIfMedia(content, e.popup);
+            });
+            layer.bindPopup(content, { maxHeight: 380 });
+        }
+
+        function style_SUNGAI_LN_25K_3_0() {
+            return {
+                pane: 'pane_SUNGAI_LN_25K_3',
+                opacity: 1,
+                color: 'rgba(164,113,88,1.0)',
+                dashArray: '',
+                lineCap: 'round',
+                lineJoin: 'round',
+                weight: 1.2,
+                fillOpacity: 0,
+                interactive: true
+            };
+        }
+        map.createPane('pane_SUNGAI_LN_25K_3');
+        map.getPane('pane_SUNGAI_LN_25K_3').style.zIndex = 403;
+        map.getPane('pane_SUNGAI_LN_25K_3').style['mix-blend-mode'] = 'normal';
+        var layer_SUNGAI_LN_25K_3 = new L.geoJson(json_SUNGAI_LN_25K_3, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_SUNGAI_LN_25K_3',
+            layerName: 'layer_SUNGAI_LN_25K_3',
+            pane: 'pane_SUNGAI_LN_25K_3',
+            onEachFeature: pop_SUNGAI_LN_25K_3,
+            style: style_SUNGAI_LN_25K_3_0
+        });
+        bounds_group.addLayer(layer_SUNGAI_LN_25K_3);
+        map.addLayer(layer_SUNGAI_LN_25K_3);
+
+        // 5. LAYER: JALAN_LN_25K_4
+        function pop_JALAN_LN_25K_4(feature, layer) {
+            var content = window.buildEnhancedPopupHtml
+                ? window.buildEnhancedPopupHtml('Jaringan Jalan', feature, autolinker)
+                : '';
+            layer.on('popupopen', function (e) {
+                addClassToPopupIfMedia(content, e.popup);
+            });
+            layer.bindPopup(content, { maxHeight: 380 });
+        }
+
+        function style_JALAN_LN_25K_4_0() {
+            return {
+                pane: 'pane_JALAN_LN_25K_4',
+                opacity: 1,
+                color: 'rgba(229,182,54,1.0)',
+                dashArray: '',
+                lineCap: 'round',
+                lineJoin: 'round',
+                weight: 1.3,
+                fillOpacity: 0,
+                interactive: true
+            };
+        }
+        map.createPane('pane_JALAN_LN_25K_4');
+        map.getPane('pane_JALAN_LN_25K_4').style.zIndex = 404;
+        map.getPane('pane_JALAN_LN_25K_4').style['mix-blend-mode'] = 'normal';
+        var layer_JALAN_LN_25K_4 = new L.geoJson(json_JALAN_LN_25K_4, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_JALAN_LN_25K_4',
+            layerName: 'layer_JALAN_LN_25K_4',
+            pane: 'pane_JALAN_LN_25K_4',
+            onEachFeature: pop_JALAN_LN_25K_4,
+            style: style_JALAN_LN_25K_4_0
+        });
+        bounds_group.addLayer(layer_JALAN_LN_25K_4);
+        map.addLayer(layer_JALAN_LN_25K_4);
+
+        // 6. LAYER: PEMERINTAHAN_PT_25K_5 (MarkerCluster)
+        function pop_PEMERINTAHAN_PT_25K_5(feature, layer) {
+            var content = window.buildEnhancedPopupHtml
+                ? window.buildEnhancedPopupHtml('Fasilitas Pemerintahan', feature, autolinker)
+                : '';
+            layer.on('popupopen', function (e) {
+                addClassToPopupIfMedia(content, e.popup);
+            });
+            layer.bindPopup(content, { maxHeight: 380 });
+        }
+
+        function style_PEMERINTAHAN_PT_25K_5_0() {
+            return {
+                pane: 'pane_PEMERINTAHAN_PT_25K_5',
+                radius: 5.5,
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.2,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(114,155,111,1.0)',
+                interactive: true
+            };
+        }
+        map.createPane('pane_PEMERINTAHAN_PT_25K_5');
+        map.getPane('pane_PEMERINTAHAN_PT_25K_5').style.zIndex = 405;
+        map.getPane('pane_PEMERINTAHAN_PT_25K_5').style['mix-blend-mode'] = 'normal';
+        var layer_PEMERINTAHAN_PT_25K_5 = new L.geoJson(json_PEMERINTAHAN_PT_25K_5, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_PEMERINTAHAN_PT_25K_5',
+            layerName: 'layer_PEMERINTAHAN_PT_25K_5',
+            pane: 'pane_PEMERINTAHAN_PT_25K_5',
+            onEachFeature: pop_PEMERINTAHAN_PT_25K_5,
+            pointToLayer: function (feature, latlng) {
+                return L.circleMarker(latlng, style_PEMERINTAHAN_PT_25K_5_0(feature));
+            }
+        });
+        var cluster_PEMERINTAHAN_PT_25K_5 = new L.MarkerClusterGroup({
+            showCoverageOnHover: false,
+            spiderfyDistanceMultiplier: 2
+        });
+        cluster_PEMERINTAHAN_PT_25K_5.addLayer(layer_PEMERINTAHAN_PT_25K_5);
+        bounds_group.addLayer(layer_PEMERINTAHAN_PT_25K_5);
+        cluster_PEMERINTAHAN_PT_25K_5.addTo(map);
+
+        // 7. LAYER: PENDIDIKAN_PT_25K_6 (MarkerCluster)
+        function pop_PENDIDIKAN_PT_25K_6(feature, layer) {
+            var content = window.buildEnhancedPopupHtml
+                ? window.buildEnhancedPopupHtml('Fasilitas Pendidikan', feature, autolinker)
+                : '';
+            layer.on('popupopen', function (e) {
+                addClassToPopupIfMedia(content, e.popup);
+            });
+            layer.bindPopup(content, { maxHeight: 380 });
+        }
+
+        function style_PENDIDIKAN_PT_25K_6_0() {
+            return {
+                pane: 'pane_PENDIDIKAN_PT_25K_6',
+                radius: 5.5,
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.2,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(141,90,153,1.0)',
+                interactive: true
+            };
+        }
+        map.createPane('pane_PENDIDIKAN_PT_25K_6');
+        map.getPane('pane_PENDIDIKAN_PT_25K_6').style.zIndex = 406;
+        map.getPane('pane_PENDIDIKAN_PT_25K_6').style['mix-blend-mode'] = 'normal';
+        var layer_PENDIDIKAN_PT_25K_6 = new L.geoJson(json_PENDIDIKAN_PT_25K_6, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_PENDIDIKAN_PT_25K_6',
+            layerName: 'layer_PENDIDIKAN_PT_25K_6',
+            pane: 'pane_PENDIDIKAN_PT_25K_6',
+            onEachFeature: pop_PENDIDIKAN_PT_25K_6,
+            pointToLayer: function (feature, latlng) {
+                return L.circleMarker(latlng, style_PENDIDIKAN_PT_25K_6_0(feature));
+            }
+        });
+        var cluster_PENDIDIKAN_PT_25K_6 = new L.MarkerClusterGroup({
+            showCoverageOnHover: false,
+            spiderfyDistanceMultiplier: 2
+        });
+        cluster_PENDIDIKAN_PT_25K_6.addLayer(layer_PENDIDIKAN_PT_25K_6);
+        bounds_group.addLayer(layer_PENDIDIKAN_PT_25K_6);
+        cluster_PENDIDIKAN_PT_25K_6.addTo(map);
+
+        // 8. LAYER: SARANAIBADAH_PT_25K_7 (MarkerCluster)
+        function pop_SARANAIBADAH_PT_25K_7(feature, layer) {
+            var content = window.buildEnhancedPopupHtml
+                ? window.buildEnhancedPopupHtml('Sarana Ibadah', feature, autolinker)
+                : '';
+            layer.on('popupopen', function (e) {
+                addClassToPopupIfMedia(content, e.popup);
+            });
+            layer.bindPopup(content, { maxHeight: 380 });
+        }
+
+        function style_SARANAIBADAH_PT_25K_7_0() {
+            return {
+                pane: 'pane_SARANAIBADAH_PT_25K_7',
+                radius: 5.5,
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.2,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(255,158,23,1.0)',
+                interactive: true
+            };
+        }
+        map.createPane('pane_SARANAIBADAH_PT_25K_7');
+        map.getPane('pane_SARANAIBADAH_PT_25K_7').style.zIndex = 407;
+        map.getPane('pane_SARANAIBADAH_PT_25K_7').style['mix-blend-mode'] = 'normal';
+        var layer_SARANAIBADAH_PT_25K_7 = new L.geoJson(json_SARANAIBADAH_PT_25K_7, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_SARANAIBADAH_PT_25K_7',
+            layerName: 'layer_SARANAIBADAH_PT_25K_7',
+            pane: 'pane_SARANAIBADAH_PT_25K_7',
+            onEachFeature: pop_SARANAIBADAH_PT_25K_7,
+            pointToLayer: function (feature, latlng) {
+                return L.circleMarker(latlng, style_SARANAIBADAH_PT_25K_7_0(feature));
+            }
+        });
+        var cluster_SARANAIBADAH_PT_25K_7 = new L.MarkerClusterGroup({
+            showCoverageOnHover: false,
+            spiderfyDistanceMultiplier: 2
+        });
+        cluster_SARANAIBADAH_PT_25K_7.addLayer(layer_SARANAIBADAH_PT_25K_7);
+        bounds_group.addLayer(layer_SARANAIBADAH_PT_25K_7);
+        cluster_SARANAIBADAH_PT_25K_7.addTo(map);
+
+        // Layer Tree Control (All 8 BIG Layers)
+        var overlaysTree = [
+            { label: '<img src="legend/SARANAIBADAH_PT_25K_7.png" /> Sarana Ibadah (SARANAIBADAH_PT_25K)', layer: cluster_SARANAIBADAH_PT_25K_7 },
+            { label: '<img src="legend/PENDIDIKAN_PT_25K_6.png" /> Pendidikan (PENDIDIKAN_PT_25K)', layer: cluster_PENDIDIKAN_PT_25K_6 },
+            { label: '<img src="legend/PEMERINTAHAN_PT_25K_5.png" /> Pemerintahan (PEMERINTAHAN_PT_25K)', layer: cluster_PEMERINTAHAN_PT_25K_5 },
+            { label: '<img src="legend/JALAN_LN_25K_4.png" /> Jaringan Jalan (JALAN_LN_25K)', layer: layer_JALAN_LN_25K_4 },
+            { label: '<img src="legend/SUNGAI_LN_25K_3.png" /> Jaringan Sungai (SUNGAI_LN_25K)', layer: layer_SUNGAI_LN_25K_3 },
+            { label: '<img src="legend/PEMUKIMAN_AR_25K_2.png" /> Area Permukiman (PEMUKIMAN_AR_25K)', layer: layer_PEMUKIMAN_AR_25K_2 },
+            { label: '<img src="legend/AGRISAWAH_AR_25K_1.png" /> Area Persawahan (AGRISAWAH_AR_25K)', layer: layer_AGRISAWAH_AR_25K_1 },
+            { label: '<img src="legend/ADMINISTRASIDESA_AR_25K_0.png" /> Batas Administrasi Desa (ADMINISTRASIDESA_AR_25K)', layer: layer_ADMINISTRASIDESA_AR_25K_0 }
+        ];
+
+        var lay = L.control.layers.tree(null, overlaysTree, {
+            collapsed: true
+        });
+        lay.addTo(map);
+        setBounds();
+    </script>
+
+    <!-- ==================== Map Enhancer (Basemap, Search, Opacity, Coord) ==================== -->
+    <script src="assets/js/map-enhancer.js"></script>
+</body>
+</html>

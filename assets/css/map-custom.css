@@ -1,0 +1,325 @@
+/* ==========================================================================
+   WEBGIS & MONITORING DASHBOARD KABUPATEN SITUBONDO
+   File: assets/css/map-custom.css
+   Description: Custom Styling for Leaflet Controls, Popups, Layer Tree,
+                Village Search Dropdown, Loading Overlay, & Coordinate Bar
+   ========================================================================== */
+
+/* Scoped Overrides to Harmonize qgis2web.css with Dashboard Layout */
+html, body.dashboard-body {
+    overflow: auto !important;
+    height: auto !important;
+}
+
+/* Preserve Sidebar & Dashboard Header Links from qgis2web.css !important rule */
+.app-sidebar a.nav-link {
+    color: #cbd5e1 !important;
+}
+.app-sidebar a.nav-link:hover,
+.app-sidebar a.nav-link.active {
+    color: #ffffff !important;
+}
+.app-sidebar .nav-link i {
+    color: #94a3b8 !important;
+}
+.app-sidebar .nav-link.active i {
+    color: var(--accent-400) !important;
+}
+.app-header .btn-primary,
+.app-header .btn-primary i,
+.app-header .btn-primary span,
+.map-toolbar-bar .btn-primary,
+.map-toolbar-bar .btn-accent {
+    color: #ffffff !important;
+}
+
+/* Map Workspace Container */
+.map-workspace-card {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+    min-height: 540px;
+    height: 100%;
+    position: relative;
+}
+
+.map-workspace-card.is-fullscreen {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 1500 !important;
+    border-radius: 0 !important;
+    height: 100vh !important;
+    width: 100vw !important;
+}
+
+.map-toolbar-bar {
+    padding: 0.65rem 1rem;
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    z-index: 800;
+}
+
+.map-canvas-container {
+    flex: 1;
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 450px;
+    overflow: hidden;
+}
+
+#map {
+    width: 100%;
+    height: 100%;
+    background-color: #e2e8f0 !important;
+    padding-right: 0 !important;
+}
+
+/* Map Loading Overlay */
+.map-loading-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.72);
+    backdrop-filter: blur(4px);
+    z-index: 950;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.85rem;
+    color: #ffffff;
+    transition: opacity 0.35s ease, visibility 0.35s ease;
+}
+
+.map-loading-overlay.is-hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.map-spinner {
+    width: 44px;
+    height: 44px;
+    border: 4px solid rgba(255, 255, 255, 0.2);
+    border-top-color: var(--accent-400);
+    border-radius: 50%;
+    animation: map-spin 0.85s linear infinite;
+}
+
+@keyframes map-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Village / Object Search Results Dropdown */
+.map-search-container {
+    position: relative;
+    min-width: 270px;
+}
+
+.map-search-results {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-xl);
+    max-height: 300px;
+    overflow-y: auto;
+    z-index: 1200;
+    display: none;
+}
+
+.map-search-results.is-open {
+    display: block;
+}
+
+.map-search-item {
+    padding: 0.55rem 0.85rem;
+    border-bottom: 1px solid var(--border-color);
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 0.12rem;
+    transition: background-color 120ms ease;
+}
+
+.map-search-item:last-child {
+    border-bottom: none;
+}
+
+.map-search-item:hover {
+    background-color: var(--primary-50);
+}
+
+.map-search-item-title {
+    font-size: 0.83rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.map-search-item-meta {
+    font-size: 0.73rem;
+    color: var(--text-muted);
+}
+
+/* Bottom Status & Coordinate Bar */
+.map-status-footer {
+    padding: 0.45rem 1rem;
+    background: var(--navy-900);
+    color: #cbd5e1;
+    font-size: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.map-coord-pill {
+    font-family: var(--font-mono);
+    font-size: 0.73rem;
+    color: var(--accent-400);
+    background: rgba(255, 255, 255, 0.07);
+    padding: 0.15rem 0.55rem;
+    border-radius: var(--radius-sm);
+}
+
+/* Enhanced Leaflet Controls Styling */
+.leaflet-control-layers,
+.leaflet-bar,
+.leaflet-control-measure {
+    border: 1px solid var(--border-strong) !important;
+    box-shadow: var(--shadow-md) !important;
+    border-radius: var(--radius-md) !important;
+    overflow: hidden;
+}
+
+.leaflet-control-layers {
+    background-color: rgba(255, 255, 255, 0.96) !important;
+    backdrop-filter: blur(8px);
+    padding: 0.5rem 0.65rem !important;
+    font-family: var(--font-sans) !important;
+    font-size: 0.8rem !important;
+}
+
+.leaflet-control-layers-tree {
+    max-height: 62vh;
+    overflow-y: auto;
+}
+
+.leaflet-layerstree-header-label {
+    font-weight: 600;
+    color: var(--text-primary);
+    padding: 2px 4px;
+}
+
+/* Modernized Attribute Popup Table */
+.leaflet-popup-content-wrapper {
+    border-radius: var(--radius-md) !important;
+    box-shadow: var(--shadow-xl) !important;
+    padding: 0 !important;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+}
+
+.leaflet-popup-content {
+    margin: 0 !important;
+    min-width: 260px;
+    max-width: 360px !important;
+    max-height: 360px !important;
+    overflow-y: auto;
+    font-family: var(--font-sans) !important;
+}
+
+.webgis-popup-header {
+    background: linear-gradient(90deg, var(--navy-900) 0%, var(--navy-700) 100%);
+    color: #ffffff;
+    padding: 0.65rem 0.9rem;
+    font-size: 0.84rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+.webgis-popup-badge {
+    font-size: 0.66rem;
+    font-weight: 600;
+    padding: 0.1rem 0.45rem;
+    border-radius: var(--radius-full);
+    background: rgba(16, 185, 129, 0.25);
+    color: #6ee7b7;
+    white-space: nowrap;
+}
+
+.leaflet-popup-content table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+}
+
+.leaflet-popup-content table tr {
+    border-bottom: 1px solid var(--border-color);
+}
+
+.leaflet-popup-content table tr:nth-child(even) {
+    background-color: var(--bg-subtle);
+}
+
+.leaflet-popup-content table th {
+    padding: 0.45rem 0.75rem;
+    text-align: left;
+    font-weight: 600;
+    color: var(--text-secondary);
+    width: 42%;
+    border-right: 1px solid var(--border-color);
+    vertical-align: top;
+}
+
+.leaflet-popup-content table td {
+    padding: 0.45rem 0.75rem;
+    color: var(--text-primary);
+    font-weight: 500;
+    word-break: break-word;
+}
+
+/* Opacity Slider in Toolbar */
+.opacity-control-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: var(--bg-subtle);
+    padding: 0.32rem 0.65rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+}
+
+.opacity-control-group input[type="range"] {
+    width: 80px;
+    accent-color: var(--primary-600);
+    cursor: pointer;
+}
