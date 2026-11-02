@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Monitoring Capaian Kinerja Survei Kabupaten Situbondo">
+    <title>Monitoring — WebGIS Situbondo</title>
+
+    <link rel="stylesheet" href="css/fontawesome-all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/tabulator-tables@6.2.5/dist/css/tabulator_simple.min.css">
+    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="assets/css/responsive.css">
+</head>
+<body class="dashboard-body">
+
+    <div class="app-shell">
+        <div id="sidebarBackdrop" class="sidebar-backdrop"></div>
+
+        <!-- ==================== SIDEBAR ==================== -->
+        <aside class="app-sidebar" aria-label="Navigasi Utama">
+            <div class="sidebar-brand">
+                <div class="brand-logo" aria-hidden="true">
+                    <i class="fas fa-map-marked-alt"></i>
+                </div>
+                <div class="brand-text">
+                    <span class="brand-title">WebGIS Situbondo</span>
+                    <span class="brand-subtitle">Monitoring Panel</span>
+                </div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="nav-section-label">Menu</div>
+                <a href="index.html" class="nav-link">
+                    <i class="fas fa-th-large"></i>
+                    <span class="nav-item-text">Dashboard</span>
+                </a>
+                <a href="peta.html" class="nav-link">
+                    <i class="fas fa-globe-asia"></i>
+                    <span class="nav-item-text">Peta WebGIS</span>
+                    <span class="nav-item-badge">8 Layer</span>
+                </a>
+                <a href="kalender.html" class="nav-link">
+                    <i class="fas fa-calendar-check"></i>
+                    <span class="nav-item-text">Kalender &amp; Tugas</span>
+                </a>
+                <a href="monitoring.html" class="nav-link active">
+                    <i class="fas fa-chart-bar"></i>
+                    <span class="nav-item-text">Monitoring</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="sidebar-footer-icon">
+                    <i class="fas fa-layer-group"></i>
+                </div>
+                <div class="sidebar-footer-info">
+                    <span class="sidebar-footer-title">RBI BIG 1:25.000</span>
+                    <span class="sidebar-footer-meta">Kab. Situbondo</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ==================== MAIN CONTENT ==================== -->
+        <div class="app-main">
+            <header class="app-header">
+                <div class="header-left">
+                    <button id="sidebarToggleBtn" class="sidebar-toggle-btn" type="button" aria-label="Toggle Sidebar">
+                        <i class="fas fa-bars"></i>
+                    </button>
+                    <div class="header-title-group">
+                        <h1 class="header-page-title">Monitoring</h1>
+                    </div>
+                </div>
+
+                <div class="header-right">
+                    <div class="sync-status-pill" title="Status Sinkronisasi Real-Time">
+                        <span id="headerSyncDot" class="sync-dot"></span>
+                        <span id="headerSyncText" class="sync-text-label">Live Sync</span>
+                    </div>
+
+                    <button id="headerRefreshBtn" class="btn btn-outline btn-sm" type="button" aria-label="Refresh Data">
+                        <i class="fas fa-sync-alt"></i>
+                        <span>Refresh</span>
+                    </button>
+
+                    <a href="https://docs.google.com/spreadsheets/d/1LDZiAVK8mDlRiLqayorNHAcwtu3H-msn970lYvicjzo/edit?usp=sharing" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-sm">
+                        <i class="fas fa-external-link-alt"></i>
+                        <span>Buka Tab Baru</span>
+                    </a>
+                </div>
+            </header>
+
+            <main class="page-content">
+                <!-- Month Tabs Bar -->
+                <div id="monitoringTabsBar" class="sheet-tabs-bar" role="tablist" aria-label="Pilih Bulan Monitoring">
+                    <button type="button" class="sheet-tab-btn active" data-gid="0" role="tab" aria-selected="true">
+                        <i class="fas fa-calendar-check"></i> Bulan 1
+                    </button>
+                    <button type="button" class="sheet-tab-btn" data-gid="1983116596" role="tab" aria-selected="false">
+                        <i class="fas fa-calendar"></i> Bulan 2
+                    </button>
+                    <button type="button" class="sheet-tab-btn" data-gid="755707223" role="tab" aria-selected="false">
+                        <i class="fas fa-calendar"></i> Bulan 3
+                    </button>
+                    <button type="button" class="sheet-tab-btn" data-gid="1304782040" role="tab" aria-selected="false">
+                        <i class="fas fa-calendar"></i> Bulan 4
+                    </button>
+                </div>
+
+                <!-- Row 1: 4 Minimalist KPI Cards -->
+                <section class="kpi-grid" aria-label="Ringkasan Monitoring">
+                    <article class="kpi-card kpi-navy">
+                        <div class="kpi-header">
+                            <div>
+                                <div class="kpi-label">Target Aktif</div>
+                                <div id="monKpiTotalTarget" class="kpi-value">8 Target</div>
+                            </div>
+                            <div class="kpi-icon"><i class="fas fa-tasks"></i></div>
+                        </div>
+                    </article>
+
+                    <article class="kpi-card kpi-emerald">
+                        <div class="kpi-header">
+                            <div>
+                                <div class="kpi-label">Tercapai</div>
+                                <div id="monKpiTotalRealisasi" class="kpi-value">8 Tercapai</div>
+                            </div>
+                            <div class="kpi-icon"><i class="fas fa-check-circle"></i></div>
+                        </div>
+                    </article>
+
+                    <article class="kpi-card">
+                        <div class="kpi-header">
+                            <div>
+                                <div class="kpi-label">Rata-rata Capaian</div>
+                                <div id="monKpiRataCapaian" class="kpi-value">100%</div>
+                            </div>
+                            <div class="kpi-icon"><i class="fas fa-chart-pie"></i></div>
+                        </div>
+                        <div class="kpi-progress-bar" aria-hidden="true">
+                            <div id="monKpiProgressFill" class="kpi-progress-fill" style="width: 100%;"></div>
+                        </div>
+                    </article>
+
+                    <article class="kpi-card kpi-amber">
+                        <div class="kpi-header">
+                            <div>
+                                <div class="kpi-label">Anggota Tim</div>
+                                <div id="monKpiJumlahAnggota" class="kpi-value">8 Anggota</div>
+                            </div>
+                            <div class="kpi-icon"><i class="fas fa-user-check"></i></div>
+                        </div>
+                    </article>
+                </section>
+
+                <!-- Row 2: Bar Chart Section -->
+                <section class="panel-card" aria-label="Grafik Capaian Anggota">
+                    <div class="panel-header">
+                        <h2 class="panel-title">
+                            <i class="fas fa-chart-bar"></i>
+                            <span>Grafik Capaian Anggota</span>
+                        </h2>
+                        <div class="panel-actions">
+                            <select id="monitoringChartWeekFilter" class="form-select" aria-label="Filter Minggu Grafik">
+                                <option value="all">Semua Minggu</option>
+                                <option value="1" selected>Minggu 1</option>
+                                <option value="2">Minggu 2</option>
+                                <option value="3">Minggu 3</option>
+                                <option value="4">Minggu 4</option>
+                            </select>
+
+                            <select id="monitoringChartSortSelect" class="form-select" aria-label="Urutan Grafik">
+                                <option value="default">Urutan Default</option>
+                                <option value="desc">Tertinggi</option>
+                                <option value="asc">Terendah</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="panel-body">
+                        <div id="monitoringChartContainer" class="chart-viewport">
+                            <canvas id="monitoringBarChartCanvas" aria-label="Bar Chart Monitoring" role="img"></canvas>
+                            <div id="monitoringChartPlaceholder" class="state-placeholder">
+                                <div class="state-placeholder-icon"><i class="fas fa-chart-bar"></i></div>
+                                <div>Memuat Grafik...</div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Row 3: Minimalist Filter & View Switcher Bar -->
+                <section class="toolbar-strip" aria-label="Filter dan Mode Tampilan">
+                    <div class="toolbar-group">
+                        <div class="input-search-wrapper">
+                            <i class="fas fa-search"></i>
+                            <input id="monitoringSearchInput" type="search" class="form-input" placeholder="Cari anggota, kegiatan, catatan..." aria-label="Cari Data Monitoring">
+                        </div>
+
+                        <select id="monitoringWeekFilter" class="form-select" aria-label="Filter Minggu">
+                            <option value="">Semua Minggu</option>
+                            <option value="1">Minggu 1</option>
+                            <option value="2">Minggu 2</option>
+                            <option value="3">Minggu 3</option>
+                            <option value="4">Minggu 4</option>
+                        </select>
+
+                        <select id="monitoringMemberFilter" class="form-select" aria-label="Filter Anggota">
+                            <option value="">Semua Anggota</option>
+                            <option value="Aji Dwi Jatmiko">Aji Dwi Jatmiko</option>
+                            <option value="Adinda Martha Putri Andristi">Adinda Martha Putri Andristi</option>
+                            <option value="Adinda Nike Febiyanti">Adinda Nike Febiyanti</option>
+                            <option value="Tiara Puspita Sari">Tiara Puspita Sari</option>
+                            <option value="Hafihud Thohir">Hafihud Thohir</option>
+                            <option value="Wildatul Fajariyah">Wildatul Fajariyah</option>
+                            <option value="Muhammad Adani Maulidan">Muhammad Adani Maulidan</option>
+                            <option value="Nabiela Fadin Insani Jannah Putri Sinarwadi">Nabiela Fadin Insani J. P. S.</option>
+                        </select>
+
+                        <select id="monitoringStatusFilter" class="form-select" aria-label="Filter Status">
+                            <option value="">Semua Status</option>
+                            <option value="Tercapai">Tercapai</option>
+                            <option value="Belum">Belum</option>
+                        </select>
+                    </div>
+
+                    <div class="toolbar-group">
+                        <div id="monitoringViewModeSwitcher" class="view-mode-switcher" role="group" aria-label="Mode Tampilan">
+                            <button type="button" class="view-mode-btn active" data-view-mode="native">
+                                <i class="fas fa-file-excel"></i>
+                                <span>Spreadsheet</span>
+                            </button>
+                            <button type="button" class="view-mode-btn" data-view-mode="split">
+                                <i class="fas fa-columns"></i>
+                                <span>Split</span>
+                            </button>
+                            <button type="button" class="view-mode-btn" data-view-mode="table">
+                                <i class="fas fa-list-ul"></i>
+                                <span>Tabel Web</span>
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Row 4: Spreadsheet & Table Card -->
+                <section id="monitoringSheetCard" class="panel-card" aria-label="Data Monitoring">
+                    <div class="panel-header">
+                        <h2 id="monitoringActiveSheetTitle" class="panel-title">
+                            <i class="fas fa-file-excel" style="color:#059669;"></i>
+                            <span>Bulan 1</span>
+                        </h2>
+                        <div class="panel-actions" style="display:flex;align-items:center;gap:0.45rem;flex-wrap:wrap;">
+                            <span class="live-pulse-badge">
+                                <span class="live-pulse-dot"></span>
+                                <span>LIVE 2 ARAH</span>
+                            </span>
+                            <span id="monitoringRowCountBadge" class="badge badge-info">32 Baris</span>
+                            <button id="monitoringForceSyncBtn" type="button" class="btn btn-accent btn-sm">
+                                <i class="fas fa-sync-alt"></i>
+                                <span>Update Grafik</span>
+                            </button>
+                            <button id="monitoringToggleToolbarBtn" type="button" class="btn btn-outline btn-sm">
+                                <i class="fas fa-sliders-h"></i>
+                                <span>Toolbar</span>
+                            </button>
+                            <button id="monitoringFullscreenSheetBtn" type="button" class="btn btn-outline btn-sm">
+                                <i class="fas fa-expand"></i>
+                                <span>Penuh</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="panel-body no-padding">
+                        <!-- 1. Native Google Sheets Live Canvas -->
+                        <div id="monitoringNativeSheetContainer">
+                            <div class="native-sheet-iframe-wrap">
+                                <iframe
+                                    id="monitoringNativeSheetIframe"
+                                    class="native-sheet-iframe"
+                                    src="https://docs.google.com/spreadsheets/d/1LDZiAVK8mDlRiLqayorNHAcwtu3H-msn970lYvicjzo/edit?gid=0&amp;rm=minimal"
+                                    title="Spreadsheet Monitoring Mingguan"
+                                    allow="clipboard-read; clipboard-write">
+                                </iframe>
+                            </div>
+                        </div>
+
+                        <!-- 2. Web Table View -->
+                        <div id="monitoringDashboardTableWrap" style="display:none;">
+                            <div id="monitoringTableContainer" class="table-viewport">
+                                <div class="state-placeholder">
+                                    <div>Memuat data...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="panel-footer">
+                        <span>Auto-Sync 5 Detik</span>
+                        <span id="monitoringLastSyncLabel">Siap</span>
+                    </div>
+                </section>
+            </main>
+
+            <footer class="app-footer">
+                <div><strong>WebGIS Situbondo</strong></div>
+                <div>Monitoring Kinerja</div>
+            </footer>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/tabulator-tables@6.2.5/dist/js/tabulator.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/app.js"></script>
+    <script src="assets/js/charts.js"></script>
+    <script src="assets/js/sheets.js"></script>
+</body>
+</html>
