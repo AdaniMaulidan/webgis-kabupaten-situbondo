@@ -34,18 +34,18 @@ window.WEBGIS_CONFIG = {
     },
 
     /**
-     * Verified Google Spreadsheets Configuration (Inspected in Phase 01)
+     * Verified Google Spreadsheets Configuration (Inspected in Phase 01 & Updated Schema)
      */
     spreadsheets: {
         kalender: {
             id: '1ZddBlRtj7OZyS3VmiisQtV7gJbekAxrq6YfxvD-liUY',
             title: 'Kalender dan Pembagian Tugas Survei Lapangan',
-            url: 'https://docs.google.com/spreadsheets/d/1ZddBlRtj7OZyS3VmiisQtV7gJbekAxrq6YfxvD-liUY/edit?gid=670201195',
-            defaultGid: '670201195',
+            url: 'https://docs.google.com/spreadsheets/d/1ZddBlRtj7OZyS3VmiisQtV7gJbekAxrq6YfxvD-liUY/edit?gid=368658062',
+            defaultGid: '368658062',
             headerRowIndex: 4, // Baris ke-4 adalah header tabel pada tab Kecamatan
             dataStartRowIndex: 5,
             tabs: [
-                { name: 'Kec.Situbondo', label: 'Kec. Situbondo (Utama)', gid: '670201195', type: 'task_table', isPrimary: true },
+                { name: 'Copy of Kec.Situbondo', label: 'Kec. Situbondo (Utama)', gid: '368658062', type: 'task_table', isPrimary: true },
                 { name: 'Kalender Survei', label: 'Kalender Survei (Okt 2026 - Mar 2027)', gid: '0', type: 'calendar_matrix' },
                 { name: 'Kec.Panji', label: 'Kec. Panji', gid: '1079740225', type: 'task_table' },
                 { name: 'Kec.Mangaran', label: 'Kec. Mangaran', gid: '1319029332', type: 'task_table' },
@@ -54,7 +54,7 @@ window.WEBGIS_CONFIG = {
                 { name: 'Kec.Kendit', label: 'Kec. Kendit', gid: '642836605', type: 'task_table' },
                 { name: 'Kec.Panarukan', label: 'Kec. Panarukan', gid: '523754395', type: 'task_table' },
                 { name: 'Kec.Bungatan', label: 'Kec. Bungatan', gid: '1872022630', type: 'task_table' },
-                { name: 'Copy of Kec.Situbondo', label: 'Arsip Kec. Situbondo', gid: '368658062', type: 'task_table' }
+                { name: 'Kec.Situbondo', label: 'Arsip Kec. Situbondo', gid: '670201195', type: 'task_table' }
             ],
             columns: [
                 { colLetter: 'B', colIndex: 1, key: 'no', label: 'No', editable: false, mergedGroup: true },
@@ -66,7 +66,8 @@ window.WEBGIS_CONFIG = {
                 { colLetter: 'H', colIndex: 7, key: 'desa', label: 'Desa/Kelurahan', editable: true, mergedGroup: true },
                 { colLetter: 'I', colIndex: 8, key: 'totalBidang', label: 'Total Bidang', editable: true },
                 { colLetter: 'J', colIndex: 9, key: 'pembagian', label: 'Pembagian Tugas', editable: true },
-                { colLetter: 'K', colIndex: 10, key: 'link', label: 'Link Peta Kerja', editable: true }
+                { colLetter: 'K', colIndex: 10, key: 'jumlahBidangAnggota', label: 'Jumlah Bidang Peranggota', editable: true, numeric: true },
+                { colLetter: 'L', colIndex: 11, key: 'link', label: 'Link Peta Kerja', editable: true }
             ]
         },
 
@@ -90,10 +91,12 @@ window.WEBGIS_CONFIG = {
                 { colLetter: 'D', colIndex: 3, key: 'kegiatan', label: 'Kegiatan', editable: true },
                 { colLetter: 'E', colIndex: 4, key: 'targetMingguIni', label: 'Target Dicapai Minggu Ini', editable: true },
                 { colLetter: 'F', colIndex: 5, key: 'targetMingguDepan', label: 'Target Minggu Depan', editable: true },
-                { colLetter: 'G', colIndex: 6, key: 'capaianPersen', label: 'Capaian (%)', editable: true, numeric: true },
-                { colLetter: 'H', colIndex: 7, key: 'status', label: 'Status', editable: true },
-                { colLetter: 'I', colIndex: 8, key: 'targetBerikutnya', label: 'Target Minggu Berikutnya', editable: true },
-                { colLetter: 'J', colIndex: 9, key: 'catatanMentor', label: 'Catatan Mentor', editable: true }
+                { colLetter: 'G', colIndex: 6, key: 'jumlahBidang', label: 'Jumlah Bidang', editable: true, numeric: true },
+                { colLetter: 'H', colIndex: 7, key: 'jumlahDikerjakan', label: 'Jumlah Bidang Yang Dikerjakan', editable: true, numeric: true },
+                { colLetter: 'I', colIndex: 8, key: 'capaianPersen', label: 'Capaian (%)', editable: false, numeric: true },
+                { colLetter: 'J', colIndex: 9, key: 'status', label: 'Status', editable: true },
+                { colLetter: 'K', colIndex: 10, key: 'catatanAnggota', label: 'Catatan Anggota', editable: true },
+                { colLetter: 'L', colIndex: 11, key: 'catatanMentor', label: 'Catatan Mentor', editable: true }
             ]
         }
     },
@@ -268,4 +271,3 @@ window.WEBGIS_CONFIG = {
         return cleaned;
     }
 };
-

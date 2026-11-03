@@ -75,6 +75,20 @@
         },
 
         /**
+         * Check if a monitoring record is active (ignoring unstarted future rows that only have "0%" from =IFERROR)
+         */
+        isRecordActive: function (r) {
+            if (!r) return false;
+            if (r._isActiveRow !== undefined) return !!r._isActiveRow;
+            var hasKegiatan = !!(r.kegiatan && r.kegiatan !== '-');
+            var hasTargetIni = !!(r.targetMingguIni && r.targetMingguIni !== '-');
+            var hasStatus = !!(r.status && r.status !== 'Belum Diisi');
+            var hasBidang = (Number(r.jumlahBidang) > 0) || (Number(r.jumlahDikerjakan) > 0);
+            var hasPositiveCapaian = Number(r.capaianNilai) > 0;
+            return hasKegiatan || hasTargetIni || hasStatus || hasBidang || hasPositiveCapaian;
+        },
+
+        /**
          * Handle incoming monitoring dataset from Spreadsheet 2
          * @param {Array<Object>} records
          * @param {string} gid
@@ -96,6 +110,7 @@
          * @param {Array<Object>} records
          */
         updateWeekDropdownLabels: function (records) {
+            var self = this;
             var weekSelect = document.getElementById('monitoringChartWeekFilter');
             if (!weekSelect || !Array.isArray(records)) return;
 
@@ -108,8 +123,7 @@
                 if (r.tanggalMulai && r.tanggalMulai !== '-' && !weekDates[w]) {
                     weekDates[w] = r.tanggalMulai;
                 }
-                var isFilled = (r.kegiatan && r.kegiatan !== '-') || /tercapai|proses/i.test(r.status) || r.capaianPersenRaw !== '';
-                if (isFilled) {
+                if (self.isRecordActive(r)) {
                     weekActiveCount[w] = (weekActiveCount[w] || 0) + 1;
                 }
             });
@@ -161,7 +175,7 @@
 
         /**
          * Aggregate member performance metrics from real Spreadsheet 2 records
-         * Filters out subtotal/total rows and supports week filtering & sorting.
+         * Includes Jumlah Bidang, Jumlah Bidang Yang Dikerjakan, Capaian (%), & Status.
          * @param {Array<Object>} records
          * @param {string} weekFilter - 'all' | '1' | '2' | '3' | '4'
          * @param {string} sortOrder - 'default' | 'desc' | 'asc'
@@ -190,15 +204,12 @@
                     : '';
                 activeLabel = 'Minggu ke-' + weekFilter + sampleDate;
             } else {
-                // For 'all', check if there are filled/active weeks; if so, aggregate active weeks so unstarted future weeks don't artificially zero out current progress
                 var filledRecords = cleanRecords.filter(function (r) {
-                    return (r.kegiatan && r.kegiatan !== '-') ||
-                           (r.status && r.status !== 'Belum Diisi') ||
-                           (r.capaianPersenRaw && r.capaianPersenRaw !== '');
+                    return self.isRecordActive(r);
                 });
                 targetRecords = filledRecords.length > 0 ? filledRecords : cleanRecords;
                 activeLabel = filledRecords.length > 0
-                    ? 'Akumulasi Minggu Berjalan (' + Math.round(filledRecords.length / 8) + ' Minggu Aktif)'
+                    ? 'Akumulasi Minggu Berjalan (' + Math.max(1, Math.round(filledRecords.length / 8)) + ' Minggu Aktif)'
                     : 'Semua Minggu (Bulan Ini)';
             }
 
@@ -214,11 +225,14 @@
                         shortLabel: self.getShortMemberLabel(name),
                         targetCount: 0,
                         realisasiCount: 0,
+                        jumlahBidang: 0,
+                        jumlahDikerjakan: 0,
                         sumPersen: 0,
                         kegiatanList: [],
                         targetMingguIniList: [],
                         targetMingguDepanList: [],
                         statusList: [],
+                        catatanAnggotaList: [],
                         tanggalList: []
                     };
                     memberOrder.push(name);
@@ -226,6 +240,8 @@
 
                 var m = memberMap[name];
                 m.targetCount += 1;
+                m.jumlahBidang += (Number(r.jumlahBidang) || 0);
+                m.jumlahDikerjakan += (Number(r.jumlahDikerjakan) || 0);
 
                 var isNegativeStatus = /belum|tidak|bukan|proses|sedang|gagal|tunda|0%/i.test(String(r.status || ''));
                 var isAchieved = r._isAchieved !== undefined
@@ -249,6 +265,9 @@
                 if (r.status && m.statusList.indexOf(r.status) === -1) {
                     m.statusList.push(r.status);
                 }
+                if (r.catatanAnggota && r.catatanAnggota !== '-' && m.catatanAnggotaList.indexOf(r.catatanAnggota) === -1) {
+                    m.catatanAnggotaList.push(r.catatanAnggota);
+                }
                 if (r.tanggalMulai && r.tanggalMulai !== '-' && m.tanggalList.indexOf(r.tanggalMulai) === -1) {
                     m.tanggalList.push(r.tanggalMulai);
                 }
@@ -262,12 +281,15 @@
                     shortLabel: m.shortLabel,
                     targetCount: m.targetCount,
                     realisasiCount: m.realisasiCount,
+                    jumlahBidang: m.jumlahBidang,
+                    jumlahDikerjakan: m.jumlahDikerjakan,
                     targetPersen: 100,
                     realisasiPersen: avgPersen,
                     kegiatan: m.kegiatanList.join('; ') || 'Belum ada kegiatan tercatat',
                     targetMingguIni: m.targetMingguIniList.join('; ') || '-',
                     targetMingguDepan: m.targetMingguDepanList.join('; ') || '-',
                     status: m.statusList.join(', ') || 'Belum Diisi',
+                    catatanAnggota: m.catatanAnggotaList.join('; ') || '-',
                     tanggalRange: m.tanggalList.join(', ') || '-'
                 };
             });
@@ -278,18 +300,24 @@
                 items.sort(function (a, b) { return a.realisasiPersen - b.realisasiPersen; });
             }
 
-            // Overall summary metrics
+            // Overall summary metrics (including Total Bidang & Bidang Dikerjakan)
             var totalTarget = 0;
             var totalRealisasi = 0;
+            var totalBidangTarget = 0;
+            var totalBidangDikerjakan = 0;
             var sumAllPersen = 0;
 
             items.forEach(function (it) {
                 totalTarget += it.targetCount;
                 totalRealisasi += it.realisasiCount;
+                totalBidangTarget += it.jumlahBidang;
+                totalBidangDikerjakan += it.jumlahDikerjakan;
                 sumAllPersen += it.realisasiPersen;
             });
 
-            var overallPersen = items.length > 0 ? Math.round(sumAllPersen / items.length) : 0;
+            var overallPersen = totalBidangTarget > 0
+                ? Math.round((totalBidangDikerjakan / totalBidangTarget) * 1000) / 10
+                : (items.length > 0 ? Math.round((sumAllPersen / items.length) * 10) / 10 : 0);
 
             return {
                 items: items,
@@ -297,6 +325,8 @@
                     memberCount: items.length,
                     totalTarget: totalTarget,
                     totalRealisasi: totalRealisasi,
+                    totalBidangTarget: totalBidangTarget,
+                    totalBidangDikerjakan: totalBidangDikerjakan,
                     overallPersen: overallPersen,
                     activeLabel: activeLabel
                 }
@@ -318,21 +348,34 @@
             var sortVal = sortSelectEl ? sortSelectEl.value : 'default';
 
             var aggregated = this.aggregateMemberMetrics(this.latestRecords, weekVal, sortVal);
+            var s = aggregated.summary;
 
             // Sync KPI summary cards on monitoring.html with the selected week/period
             var elTarget = document.getElementById('monKpiTotalTarget');
+            var elTargetSub = document.getElementById('monKpiTargetSub');
             var elRealisasi = document.getElementById('monKpiTotalRealisasi');
+            var elRealisasiSub = document.getElementById('monKpiRealisasiSub');
             var elRata = document.getElementById('monKpiRataCapaian');
             var elFill = document.getElementById('monKpiProgressFill');
             var elMeta = document.getElementById('monKpiCapaianMeta');
             var elAnggota = document.getElementById('monKpiJumlahAnggota');
 
-            if (elTarget) elTarget.textContent = aggregated.summary.totalTarget + ' Target Tugas';
-            if (elRealisasi) elRealisasi.textContent = aggregated.summary.totalRealisasi + ' / ' + aggregated.summary.totalTarget + ' Tercapai';
-            if (elRata) elRata.textContent = aggregated.summary.overallPersen + '%';
-            if (elFill) elFill.style.width = aggregated.summary.overallPersen + '%';
-            if (elMeta) elMeta.textContent = aggregated.summary.activeLabel;
-            if (elAnggota) elAnggota.textContent = aggregated.summary.memberCount + ' Anggota';
+            if (s.totalBidangTarget > 0) {
+                if (elTarget) elTarget.textContent = s.totalBidangTarget + ' Bidang';
+                if (elTargetSub) elTargetSub.textContent = s.totalTarget + ' Target Tugas Anggota';
+                if (elRealisasi) elRealisasi.textContent = s.totalBidangDikerjakan + ' / ' + s.totalBidangTarget + ' Bidang';
+                if (elRealisasiSub) elRealisasiSub.textContent = s.totalRealisasi + ' / ' + s.totalTarget + ' Anggota Tercapai';
+            } else {
+                if (elTarget) elTarget.textContent = s.totalTarget + ' Target Tugas';
+                if (elTargetSub) elTargetSub.textContent = s.activeLabel;
+                if (elRealisasi) elRealisasi.textContent = s.totalRealisasi + ' / ' + s.totalTarget + ' Tercapai';
+                if (elRealisasiSub) elRealisasiSub.textContent = s.activeLabel;
+            }
+
+            if (elRata) elRata.textContent = s.overallPersen + '%';
+            if (elFill) elFill.style.width = Math.min(100, s.overallPersen) + '%';
+            if (elMeta) elMeta.textContent = s.activeLabel;
+            if (elAnggota) elAnggota.textContent = s.memberCount + ' Anggota';
 
             if (placeholder) {
                 placeholder.style.display = 'none';
@@ -354,19 +397,29 @@
             if (!canvas || !container) return;
 
             var aggregated = this.aggregateMemberMetrics(records, 'all', 'default');
+            var s = aggregated.summary;
 
             // Sync Dashboard KPI Cards
             var kpiTarget = document.getElementById('kpiTotalTarget');
+            var kpiTargetSub = document.getElementById('kpiTargetSubtext');
             var kpiReal = document.getElementById('kpiTotalRealisasi');
             var kpiPersen = document.getElementById('kpiPersentaseCapaian');
             var kpiFill = document.getElementById('kpiProgressFill');
             var kpiRealSub = document.getElementById('kpiRealisasiSubtext');
 
-            if (kpiTarget) kpiTarget.textContent = aggregated.summary.totalTarget + ' Target Tugas';
-            if (kpiReal) kpiReal.textContent = aggregated.summary.totalRealisasi + ' / ' + aggregated.summary.totalTarget + ' Tercapai';
-            if (kpiPersen) kpiPersen.textContent = aggregated.summary.overallPersen + '%';
-            if (kpiFill) kpiFill.style.width = aggregated.summary.overallPersen + '%';
-            if (kpiRealSub) kpiRealSub.textContent = aggregated.summary.activeLabel;
+            if (s.totalBidangTarget > 0) {
+                if (kpiTarget) kpiTarget.textContent = s.totalBidangTarget + ' Bidang';
+                if (kpiTargetSub) kpiTargetSub.textContent = s.totalTarget + ' Target Anggota';
+                if (kpiReal) kpiReal.textContent = s.totalBidangDikerjakan + ' / ' + s.totalBidangTarget + ' Bidang';
+                if (kpiRealSub) kpiRealSub.textContent = s.totalRealisasi + ' / ' + s.totalTarget + ' Anggota Tercapai';
+            } else {
+                if (kpiTarget) kpiTarget.textContent = s.totalTarget + ' Target Tugas';
+                if (kpiReal) kpiReal.textContent = s.totalRealisasi + ' / ' + s.totalTarget + ' Tercapai';
+                if (kpiRealSub) kpiRealSub.textContent = s.activeLabel;
+            }
+
+            if (kpiPersen) kpiPersen.textContent = s.overallPersen + '%';
+            if (kpiFill) kpiFill.style.width = Math.min(100, s.overallPersen) + '%';
 
             if (placeholder) {
                 placeholder.style.display = 'none';
@@ -398,9 +451,9 @@
 
             var barColors = items.map(function (it) {
                 if (it.realisasiPersen >= 100) return 'rgba(16, 185, 129, 0.88)'; // Emerald 500
-                if (it.realisasiPersen >= 50) return 'rgba(37, 99, 235, 0.85)';  // Blue 600
-                if (it.realisasiPersen > 0) return 'rgba(245, 158, 11, 0.85)';   // Amber 500
-                return 'rgba(239, 68, 68, 0.85)';                                // Red 500 (Belum Tercapai / 0%)
+                if (it.realisasiPersen >= 50) return 'rgba(37, 99, 235, 0.88)';   // Blue 600 (e.g. 94% / 17 dari 18 bidang)
+                if (it.realisasiPersen > 0) return 'rgba(245, 158, 11, 0.85)';    // Amber 500
+                return 'rgba(239, 68, 68, 0.85)';                                 // Red 500 (Belum Tercapai / 0%)
             });
 
             var barBorders = items.map(function (it) {
@@ -422,16 +475,21 @@
                     var meta = chart.getDatasetMeta(0);
                     if (!meta || !meta.data) return;
                     ctx2.save();
-                    ctx2.font = "700 11px 'Inter', sans-serif";
+                    ctx2.font = "700 10.5px 'Inter', sans-serif";
                     ctx2.textAlign = 'center';
                     ctx2.textBaseline = 'bottom';
                     meta.data.forEach(function (barEl, index) {
                         var item = items[index];
                         if (!item) return;
                         var val = item.realisasiPersen;
-                        var labelText = val <= 0 && /belum|tidak/i.test(item.status)
-                            ? '0% (Belum)'
-                            : (val + '%');
+                        var labelText = '';
+                        if (val <= 0 && /belum|tidak/i.test(item.status)) {
+                            labelText = '0% (Belum)';
+                        } else if (item.jumlahBidang > 0) {
+                            labelText = val + '% (' + item.jumlahDikerjakan + '/' + item.jumlahBidang + ')';
+                        } else {
+                            labelText = val + '%';
+                        }
                         ctx2.fillStyle = val >= 100 ? '#047857' : (val > 0 ? '#1d4ed8' : '#dc2626');
                         ctx2.fillText(labelText, barEl.x, barEl.y - 4);
                     });
@@ -547,6 +605,9 @@
                                     var i = context.dataIndex;
                                     var item = items[i];
                                     if (context.datasetIndex === 0 && item) {
+                                        if (item.jumlahBidang > 0) {
+                                            return ' Realisasi Capaian: ' + item.realisasiPersen + '% (' + item.jumlahDikerjakan + ' / ' + item.jumlahBidang + ' Bidang Dikerjakan)';
+                                        }
                                         return ' Realisasi Capaian: ' + item.realisasiPersen + '% (' + item.realisasiCount + '/' + item.targetCount + ' Target Tercapai)';
                                     }
                                     return ' Target Standar: ' + context.parsed.y + '%';
@@ -556,13 +617,19 @@
                                     var i = tooltipItems[0].dataIndex;
                                     var item = items[i];
                                     if (!item) return [];
-                                    var lines = [
-                                        '',
+                                    var lines = [''];
+                                    if (item.jumlahBidang > 0) {
+                                        lines.push('Bidang      : ' + item.jumlahDikerjakan + ' Dikerjakan dari ' + item.jumlahBidang + ' Bidang Target');
+                                    }
+                                    lines.push(
                                         'Status      : ' + item.status,
                                         'Periode     : ' + item.tanggalRange,
                                         'Kegiatan    : ' + item.kegiatan,
                                         'Hasil/Target: ' + item.targetMingguIni
-                                    ];
+                                    );
+                                    if (item.catatanAnggota && item.catatanAnggota !== '-') {
+                                        lines.push('Catatan     : ' + item.catatanAnggota);
+                                    }
                                     if (targetKey === 'monitoring') {
                                         lines.push('', 'Tip: Klik batang grafik untuk memfilter tabel di bawah.');
                                     }
@@ -589,7 +656,7 @@
                         },
                         y: {
                             beginAtZero: true,
-                            max: 110,
+                            max: 115,
                             grid: {
                                 color: '#f1f5f9',
                                 drawBorder: false
@@ -636,18 +703,26 @@
          */
         renderFallbackSvgChart: function (container, items, summary) {
             if (!container) return;
+            var rightLabel = summary.totalBidangTarget > 0
+                ? ('Rata-rata: <strong style="color:var(--accent-600);">' + summary.overallPersen + '%</strong> (' + summary.totalBidangDikerjakan + '/' + summary.totalBidangTarget + ' Bidang)')
+                : ('Rata-rata: <strong style="color:var(--accent-600);">' + summary.overallPersen + '%</strong> (' + summary.totalRealisasi + '/' + summary.totalTarget + ' Tercapai)');
+
             var html =
                 '<div style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:0.75rem 0.5rem;">' +
                     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;font-size:0.78rem;color:var(--text-secondary);">' +
                         '<span><strong>' + window.WebGISApp.escapeHtml(summary.activeLabel || 'Capaian Anggota') + '</strong></span>' +
-                        '<span>Rata-rata: <strong style="color:var(--accent-600);">' + summary.overallPersen + '%</strong> (' + summary.totalRealisasi + '/' + summary.totalTarget + ' Tercapai)</span>' +
+                        '<span>' + rightLabel + '</span>' +
                     '</div>' +
                     '<div style="display:flex;flex-direction:column;gap:0.55rem;flex:1;justify-content:center;">';
 
             items.forEach(function (it) {
                 var barColor = it.realisasiPersen >= 100 ? '#10b981' : (it.realisasiPersen > 0 ? '#2563eb' : '#94a3b8');
+                var pctLabel = it.jumlahBidang > 0
+                    ? (it.realisasiPersen + '% (' + it.jumlahDikerjakan + '/' + it.jumlahBidang + ')')
+                    : (it.realisasiPersen + '%');
+
                 html +=
-                    '<div style="display:grid;grid-template-columns:155px 1fr 52px;align-items:center;gap:0.75rem;font-size:0.78rem;" title="' + window.WebGISApp.escapeHtml(it.fullName + ' - ' + it.kegiatan) + '">' +
+                    '<div style="display:grid;grid-template-columns:155px 1fr 86px;align-items:center;gap:0.75rem;font-size:0.78rem;" title="' + window.WebGISApp.escapeHtml(it.fullName + ' - ' + it.kegiatan) + '">' +
                         '<div style="font-weight:600;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' +
                             window.WebGISApp.escapeHtml(it.shortLabel) +
                         '</div>' +
@@ -655,7 +730,7 @@
                             '<div style="height:100%;width:' + Math.min(100, it.realisasiPersen) + '%;background:' + barColor + ';border-radius:999px;transition:width 300ms ease;"></div>' +
                         '</div>' +
                         '<div style="font-weight:700;text-align:right;color:var(--text-primary);">' +
-                            it.realisasiPersen + '%' +
+                            pctLabel +
                         '</div>' +
                     '</div>';
             });
@@ -675,4 +750,3 @@
         WebGISCharts.init();
     }
 })();
-

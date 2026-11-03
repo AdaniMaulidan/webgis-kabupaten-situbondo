@@ -18,7 +18,7 @@
         cache: {},
         kalenderTable: null,
         monitoringTable: null,
-        currentKalenderGid: '670201195',
+        currentKalenderGid: (CONFIG && CONFIG.spreadsheets && CONFIG.spreadsheets.kalender && CONFIG.spreadsheets.kalender.defaultGid) || '368658062',
         currentKalenderTabType: 'task_table',
         currentKalenderRecords: [],
         currentMonitoringGid: '0',
@@ -49,7 +49,7 @@
                 this.initDashboardLiveSummary();
             }
 
-            // Start 2-Way Real-Time Background Auto-Sync (every 5 seconds)
+            // Start 2-Way Real-Time Background Auto-Sync (every 3 seconds)
             this.startRealtimeAutoSync();
 
             // Hook global Refresh button in Top Header
@@ -240,17 +240,50 @@
         },
 
         /**
-         * Evaluate both Status (Col H) and Capaian % (Col G) together so changing
-         * Status to "Belum Tercapai" or "Belum" immediately sets achievement to 0% / not achieved.
+         * Parse numeric integer/float from cell string (e.g. "18" or "18 Bidang" -> 18)
          */
-        evaluateMonitoringRow: function (rawStatus, rawCapaian) {
+        parseNumericCell: function (rawVal) {
+            if (rawVal === undefined || rawVal === null || String(rawVal).trim() === '') return null;
+            var cleaned = String(rawVal).replace(',', '.').replace(/[^0-9.\-]/g, '').trim();
+            if (!cleaned) return null;
+            var num = parseFloat(cleaned);
+            return isNaN(num) ? null : num;
+        },
+
+        /**
+         * Evaluate Status, Capaian %, Jumlah Bidang, and Jumlah Bidang Yang Dikerjakan together.
+         * Supports automatic Capaian (%) calculation from (Jumlah Bidang Dikerjakan / Jumlah Bidang)
+         * and ensures changing Status to "Belum Tercapai" immediately updates achievement status.
+         */
+        evaluateMonitoringRow: function (rawStatus, rawCapaian, rawJumlahBidang, rawJumlahDikerjakan) {
             var s = String(rawStatus || '').trim().toLowerCase();
             var parsedPersen = null;
+
             if (rawCapaian !== undefined && rawCapaian !== null && String(rawCapaian).trim() !== '') {
                 var numStr = String(rawCapaian).replace('%', '').replace(',', '.').trim();
                 var numVal = parseFloat(numStr);
                 if (!isNaN(numVal)) {
-                    parsedPersen = Math.max(0, Math.min(100, numVal));
+                    // If raw value is a decimal ratio between 0 and 1 (e.g. 0.9444 without '%'), scale to 0..100
+                    if (numVal > 0 && numVal <= 1 && String(rawCapaian).indexOf('%') === -1) {
+                        numVal = Math.round(numVal * 100);
+                    }
+                    parsedPersen = Math.max(0, Math.min(100, Math.round(numVal)));
+                }
+            }
+
+            var targetBidang = this.parseNumericCell(rawJumlahBidang);
+            var dikerjakanBidang = this.parseNumericCell(rawJumlahDikerjakan);
+            var calcBidangPersen = null;
+
+            if (targetBidang !== null && targetBidang > 0 && dikerjakanBidang !== null && dikerjakanBidang >= 0) {
+                calcBidangPersen = Math.max(0, Math.min(100, Math.round((dikerjakanBidang / targetBidang) * 100)));
+            }
+
+            // Prefer calculated bidang percentage if sheet formula is missing or inverted (>100% when dikerjakan < target)
+            var basePersen = parsedPersen;
+            if (calcBidangPersen !== null) {
+                if (basePersen === null || (dikerjakanBidang < targetBidang && basePersen >= 100)) {
+                    basePersen = calcBidangPersen;
                 }
             }
 
@@ -263,24 +296,41 @@
 
             if (isNegative) {
                 isAchieved = false;
-                effectivePersen = (parsedPersen !== null && parsedPersen < 100) ? parsedPersen : 0;
+                effectivePersen = (basePersen !== null && basePersen < 100) ? basePersen : 0;
             } else if (isProgress) {
                 isAchieved = false;
-                effectivePersen = (parsedPersen !== null && parsedPersen < 100) ? parsedPersen : 50;
+                effectivePersen = (basePersen !== null && basePersen < 100) ? basePersen : 50;
             } else if (isPositive) {
-                effectivePersen = parsedPersen !== null ? parsedPersen : 100;
-                isAchieved = effectivePersen >= 100 || parsedPersen === null;
+                effectivePersen = basePersen !== null ? basePersen : 100;
+                isAchieved = true;
             } else {
-                effectivePersen = parsedPersen !== null ? parsedPersen : 0;
+                effectivePersen = basePersen !== null ? basePersen : 0;
                 isAchieved = effectivePersen >= 100;
             }
 
             return {
                 capaianNilai: effectivePersen,
+                jumlahBidang: targetBidang !== null ? targetBidang : 0,
+                jumlahDikerjakan: dikerjakanBidang !== null ? dikerjakanBidang : 0,
+                hasBidangData: (targetBidang !== null && targetBidang > 0) || (dikerjakanBidang !== null && dikerjakanBidang > 0),
                 isAchieved: isAchieved,
                 isNegative: isNegative,
                 isProgress: isProgress
             };
+        },
+
+        /**
+         * Determine if a monitoring row represents an active/started task row
+         * (Ignores unstarted future week rows that only have "0%" from =IFERROR(H/G,0))
+         */
+        isMonitoringRowActive: function (r) {
+            if (!r) return false;
+            var hasKegiatan = !!(r.kegiatan && r.kegiatan !== '-');
+            var hasTargetIni = !!(r.targetMingguIni && r.targetMingguIni !== '-');
+            var hasStatus = !!(r.status && r.status !== 'Belum Diisi');
+            var hasBidang = (Number(r.jumlahBidang) > 0) || (Number(r.jumlahDikerjakan) > 0);
+            var hasPositiveCapaian = Number(r.capaianNilai) > 0;
+            return hasKegiatan || hasTargetIni || hasStatus || hasBidang || hasPositiveCapaian;
         },
 
         /**
@@ -518,7 +568,7 @@
          * Extract cell string value safely from gviz row cell
          */
         getCellValue: function (rowObj, colIdx) {
-            if (!rowObj || !rowObj.c || !rowObj.c[colIdx]) return '';
+            if (!rowObj || !rowObj.c || colIdx < 0 || !rowObj.c[colIdx]) return '';
             var cell = rowObj.c[colIdx];
             if (cell.f !== undefined && cell.f !== null && String(cell.f).trim() !== '') {
                 return String(cell.f).trim();
@@ -530,14 +580,56 @@
         },
 
         /**
-         * Parse Spreadsheet 1 Kecamatan Task Table (e.g., Kec.Situbondo gid=670201195)
-         * Handles 8-member merged blocks per 'No' while preserving exact _sheetRowIndex.
+         * Parse Spreadsheet 1 Kecamatan Task Table (e.g., Kec.Situbondo gid=368658062)
+         * Dynamically detects column positions including the new "Jumlah Bidang Peranggota"
+         * column placed after "Pembagian", while preserving 8-member merged blocks per 'No'.
          */
         parseTaskTableData: function (gvizTable, gid) {
             var rows = (gvizTable && gvizTable.rows) || [];
+            var cols = (gvizTable && gvizTable.cols) || [];
             var numHeaders = (typeof gvizTable.parsedNumHeaders === 'number' && gvizTable.parsedNumHeaders > 0)
                 ? gvizTable.parsedNumHeaders
                 : 4;
+
+            // Default column mapping for 12-column schema (with Jumlah Bidang Peranggota at Col K / index 10)
+            var hasExtraCols = cols.length >= 12;
+            var colMap = {
+                no: 1,                  // Col B
+                pic: 2,                 // Col C
+                nama: 3,                // Col D
+                kegiatan: 4,            // Col E
+                tanggal: 5,             // Col F
+                kecamatan: 6,           // Col G
+                desa: 7,                // Col H
+                totalBidang: 8,         // Col I
+                pembagian: 9,           // Col J
+                jumlahBidangAnggota: hasExtraCols ? 10 : -1, // Col K (after Pembagian)
+                link: hasExtraCols ? 11 : 10                 // Col L (or Col K if 11 cols)
+            };
+
+            // Inspect header row (rows[0]) if present to dynamically adjust column indices
+            if (rows.length > 0 && rows[0] && Array.isArray(rows[0].c)) {
+                var hCells = rows[0].c;
+                for (var cIdx = 1; cIdx < hCells.length; cIdx++) {
+                    var hText = this.getCellValue(rows[0], cIdx).toLowerCase();
+                    if (!hText) continue;
+                    if (hText === 'no') colMap.no = cIdx;
+                    else if (hText === 'pic') colMap.pic = cIdx;
+                    else if (/nama\s*anggota/i.test(hText)) colMap.nama = cIdx;
+                    else if (/kegiatan/i.test(hText)) colMap.kegiatan = cIdx;
+                    else if (/tanggal/i.test(hText)) colMap.tanggal = cIdx;
+                    else if (/kecamatan/i.test(hText)) colMap.kecamatan = cIdx;
+                    else if (/desa|kelurahan/i.test(hText)) colMap.desa = cIdx;
+                    else if (/total\s*bidang/i.test(hText)) colMap.totalBidang = cIdx;
+                    else if (/pembagian/i.test(hText)) colMap.pembagian = cIdx;
+                    else if (/jumlah\s*bidang/i.test(hText)) colMap.jumlahBidangAnggota = cIdx;
+                    else if (/link/i.test(hText)) colMap.link = cIdx;
+                }
+                // If link shifted right of pembagian + 1, ensure jumlahBidangAnggota is the column right after pembagian
+                if (colMap.link > colMap.pembagian + 1 && colMap.jumlahBidangAnggota === -1) {
+                    colMap.jumlahBidangAnggota = colMap.pembagian + 1;
+                }
+            }
 
             var records = [];
             var currentGroup = {
@@ -557,22 +649,23 @@
                 var r = rows[i];
                 var sheetRowNumber = numHeaders + 1 + i;
 
-                var rawNo = this.getCellValue(r, 1);        // Col B: No
-                var rawPic = this.getCellValue(r, 2);       // Col C: PIC
-                var rawNama = this.getCellValue(r, 3);      // Col D: Nama Anggota
-                var rawKegiatan = this.getCellValue(r, 4);  // Col E: Kegiatan
-                var rawTanggal = this.getCellValue(r, 5);   // Col F: Tanggal
-                var rawKecamatan = this.getCellValue(r, 6); // Col G: Kecamatan
-                var rawDesa = this.getCellValue(r, 7);      // Col H: Desa/Kelurahan
-                var rawBidang = this.getCellValue(r, 8);    // Col I: Total Bidang
-                var rawPembagian = this.getCellValue(r, 9); // Col J: Pembagian
-                var rawLink = this.getCellValue(r, 10);     // Col K: Link
+                var rawNo = this.getCellValue(r, colMap.no);
+                var rawPic = this.getCellValue(r, colMap.pic);
+                var rawNama = this.getCellValue(r, colMap.nama);
+                var rawKegiatan = this.getCellValue(r, colMap.kegiatan);
+                var rawTanggal = this.getCellValue(r, colMap.tanggal);
+                var rawKecamatan = this.getCellValue(r, colMap.kecamatan);
+                var rawDesa = this.getCellValue(r, colMap.desa);
+                var rawBidang = this.getCellValue(r, colMap.totalBidang);
+                var rawPembagian = this.getCellValue(r, colMap.pembagian);
+                var rawJumlahAnggota = colMap.jumlahBidangAnggota >= 0 ? this.getCellValue(r, colMap.jumlahBidangAnggota) : '';
+                var rawLink = this.getCellValue(r, colMap.link);
 
                 // Skip completely blank spacer rows or repeated header rows
-                if (!rawNama && !rawNo && !rawKegiatan && !rawPembagian) {
+                if (!rawNama && !rawNo && !rawKegiatan && !rawPembagian && !rawJumlahAnggota) {
                     continue;
                 }
-                if (rawNama.toLowerCase() === 'nama anggota' || rawNo.toLowerCase() === 'no') {
+                if (/^(nama\s*anggota|no|pic)$/i.test(rawNama.trim()) || rawNo.toLowerCase() === 'no') {
                     continue;
                 }
 
@@ -605,6 +698,8 @@
                     ? CONFIG.normalizeMemberName(rawNama)
                     : rawNama;
 
+                var parsedJumlahAnggotaNum = this.parseNumericCell(rawJumlahAnggota);
+
                 records.push({
                     id: gid + '_row_' + sheetRowNumber,
                     _gid: gid,
@@ -621,6 +716,8 @@
                     desa: currentGroup.desa,
                     totalBidang: rawBidang || currentGroup.totalBidang || '-',
                     pembagian: rawPembagian || '-',
+                    jumlahBidangAnggota: rawJumlahAnggota !== '' ? rawJumlahAnggota : '-',
+                    jumlahBidangAnggotaNum: parsedJumlahAnggotaNum !== null ? parsedJumlahAnggotaNum : 0,
                     link: rawLink || currentGroup.link || '',
                     _raw: {
                         no: rawNo,
@@ -632,6 +729,7 @@
                         desa: rawDesa,
                         totalBidang: rawBidang,
                         pembagian: rawPembagian,
+                        jumlahBidangAnggota: rawJumlahAnggota,
                         link: rawLink
                     }
                 });
@@ -656,9 +754,16 @@
                         if (!edit || edit.sheetType !== sheetType || String(edit.gid) !== String(gid)) return;
                         if (String(edit.rowId) === String(rec.id)) {
                             rec[edit.field] = edit.newValue;
-                            if (sheetType === 'monitoring' && (edit.field === 'capaianPersenRaw' || edit.field === 'status')) {
-                                var evalRes = self.evaluateMonitoringRow(rec.status, rec.capaianPersenRaw);
+                            if (sheetType === 'monitoring') {
+                                var evalRes = self.evaluateMonitoringRow(
+                                    rec.status,
+                                    rec.capaianPersenRaw,
+                                    rec.jumlahBidangRaw,
+                                    rec.jumlahDikerjakanRaw
+                                );
                                 rec.capaianNilai = evalRes.capaianNilai;
+                                rec.jumlahBidang = evalRes.jumlahBidang;
+                                rec.jumlahDikerjakan = evalRes.jumlahDikerjakan;
                                 rec._isAchieved = evalRes.isAchieved;
                             }
                         }
@@ -674,7 +779,6 @@
          */
         parseCalendarMatrixData: function (gvizTable) {
             var rows = (gvizTable && gvizTable.rows) || [];
-            // Build 2D string grid from gviz rows
             var grid = [];
             for (var r = 0; r < rows.length; r++) {
                 var rowArr = [];
@@ -708,13 +812,11 @@
                     for (var offset = 0; offset < 7; offset++) {
                         var colIdx = mCfg.startCol + offset;
                         var cellText = (grid[rIdx] && grid[rIdx][colIdx]) || '';
-                        // Check if this cell is a text event (not a pure number 1..31 and not a day header)
                         if (
                             cellText &&
                             !/^\d+$/.test(cellText) &&
                             !/^(2026|2027|oktober|november|desember|januari|februari|maret|senin|selasa|rabu|kamis|jumat|sabtu|minggu)$/i.test(cellText)
                         ) {
-                            // Look one row above in the same column for the date number
                             var dateNum = (rIdx > 0 && grid[rIdx - 1] && grid[rIdx - 1][colIdx]) || '';
                             var isHoliday = /cuti|hari raya|tahun baru|nyepi|idul fitri|wafat|ramadhan|imlek/i.test(cellText);
                             events.push({
@@ -739,8 +841,9 @@
 
         /**
          * Parse Spreadsheet 2 Monitoring Table (Bulan 1 - Bulan 4)
-         * Normalizes member names, forward-fills Minggu ke- & Tanggal Mulai,
-         * and extracts numeric Capaian (%) and Status.
+         * Dynamically detects columns including "Jumlah Bidang" (Col G) and
+         * "Jumlah Bidang Yang Di Kerjakan" (Col H), normalizes member names,
+         * and computes Capaian (%) & Status.
          */
         parseMonitoringTableData: function (gvizTable, gid) {
             var rows = (gvizTable && gvizTable.rows) || [];
@@ -749,7 +852,8 @@
                 ? gvizTable.parsedNumHeaders
                 : 1;
 
-            // Detect column indices dynamically from header labels (Bulan 1 has 10 cols, Bulan 2-4 have 9 cols)
+            // Default schema detection (12 columns in Bulan 1 vs 9/10 columns in Bulan 2-4)
+            var is12Cols = cols.length >= 11;
             var colMap = {
                 mingguKe: 0,
                 tanggalMulai: 1,
@@ -757,11 +861,31 @@
                 kegiatan: 3,
                 targetMingguIni: 4,
                 targetMingguDepan: 5,
-                capaianPersen: 6,
-                status: 7,
-                targetBerikutnya: 8,
-                catatanMentor: cols.length >= 10 ? 9 : 8
+                jumlahBidang: is12Cols ? 6 : -1,
+                jumlahDikerjakan: is12Cols ? 7 : -1,
+                capaianPersen: is12Cols ? 8 : 6,
+                status: is12Cols ? 9 : 7,
+                catatanAnggota: is12Cols ? 10 : -1,
+                catatanMentor: is12Cols ? 11 : (cols.length >= 10 ? 9 : 8)
             };
+
+            // Dynamic header label matching from gvizTable.cols
+            for (var cIdx = 0; cIdx < cols.length; cIdx++) {
+                var lbl = String((cols[cIdx] && cols[cIdx].label) || '').trim().toLowerCase();
+                if (!lbl) continue;
+                if (/minggu\s*ke/i.test(lbl)) colMap.mingguKe = cIdx;
+                else if (/tanggal\s*mulai/i.test(lbl)) colMap.tanggalMulai = cIdx;
+                else if (/^nama$/i.test(lbl)) colMap.nama = cIdx;
+                else if (/^kegiatan$/i.test(lbl)) colMap.kegiatan = cIdx;
+                else if (/target.*minggu\s*ini/i.test(lbl)) colMap.targetMingguIni = cIdx;
+                else if (/target.*minggu\s*depan/i.test(lbl)) colMap.targetMingguDepan = cIdx;
+                else if (/jumlah\s*bidang.*(kerjakan|dikerjakan)/i.test(lbl)) colMap.jumlahDikerjakan = cIdx;
+                else if (/^jumlah\s*bidang/i.test(lbl)) colMap.jumlahBidang = cIdx;
+                else if (/capaian/i.test(lbl)) colMap.capaianPersen = cIdx;
+                else if (/^status$/i.test(lbl)) colMap.status = cIdx;
+                else if (/catatan\s*anggota/i.test(lbl)) colMap.catatanAnggota = cIdx;
+                else if (/catatan\s*mentor/i.test(lbl)) colMap.catatanMentor = cIdx;
+            }
 
             var records = [];
             var currentMinggu = '1';
@@ -778,10 +902,12 @@
                 var rawKegiatan = this.getCellValue(r, colMap.kegiatan);
                 var rawTargetIni = this.getCellValue(r, colMap.targetMingguIni);
                 var rawTargetDepan = this.getCellValue(r, colMap.targetMingguDepan);
+                var rawJumlahBidang = colMap.jumlahBidang >= 0 ? this.getCellValue(r, colMap.jumlahBidang) : '';
+                var rawJumlahDikerjakan = colMap.jumlahDikerjakan >= 0 ? this.getCellValue(r, colMap.jumlahDikerjakan) : '';
                 var rawCapaian = this.getCellValue(r, colMap.capaianPersen);
                 var rawStatus = this.getCellValue(r, colMap.status);
-                var rawTargetBerikut = colMap.catatanMentor === 9 ? this.getCellValue(r, colMap.targetBerikutnya) : '';
-                var rawCatatan = this.getCellValue(r, colMap.catatanMentor);
+                var rawCatatanAnggota = colMap.catatanAnggota >= 0 ? this.getCellValue(r, colMap.catatanAnggota) : '';
+                var rawCatatanMentor = this.getCellValue(r, colMap.catatanMentor);
 
                 if (!rawNama && !rawMinggu && !rawKegiatan) {
                     continue;
@@ -804,9 +930,9 @@
                     ? CONFIG.normalizeMemberName(rawNama)
                     : rawNama.trim();
 
-                var evalRes = this.evaluateMonitoringRow(rawStatus, rawCapaian);
+                var evalRes = this.evaluateMonitoringRow(rawStatus, rawCapaian, rawJumlahBidang, rawJumlahDikerjakan);
 
-                records.push({
+                var recObj = {
                     id: gid + '_mon_' + sheetRowNumber,
                     _gid: gid,
                     _sheetRowIndex: sheetRowNumber,
@@ -820,11 +946,16 @@
                     kegiatan: rawKegiatan || '-',
                     targetMingguIni: rawTargetIni || '-',
                     targetMingguDepan: rawTargetDepan || '-',
+                    jumlahBidangRaw: rawJumlahBidang,
+                    jumlahDikerjakanRaw: rawJumlahDikerjakan,
+                    jumlahBidang: evalRes.jumlahBidang,
+                    jumlahDikerjakan: evalRes.jumlahDikerjakan,
+                    hasBidangData: evalRes.hasBidangData,
                     capaianPersenRaw: rawCapaian,
                     capaianNilai: evalRes.capaianNilai,
                     status: rawStatus || 'Belum Diisi',
-                    targetBerikutnya: rawTargetBerikut || '-',
-                    catatanMentor: rawCatatan || '-',
+                    catatanAnggota: rawCatatanAnggota || '-',
+                    catatanMentor: rawCatatanMentor || '-',
                     _raw: {
                         mingguKe: rawMinggu,
                         tanggalMulai: rawTanggal,
@@ -832,12 +963,17 @@
                         kegiatan: rawKegiatan,
                         targetMingguIni: rawTargetIni,
                         targetMingguDepan: rawTargetDepan,
+                        jumlahBidang: rawJumlahBidang,
+                        jumlahDikerjakan: rawJumlahDikerjakan,
                         capaianPersen: rawCapaian,
                         status: rawStatus,
-                        targetBerikutnya: rawTargetBerikut,
-                        catatanMentor: rawCatatan
+                        catatanAnggota: rawCatatanAnggota,
+                        catatanMentor: rawCatatanMentor
                     }
-                });
+                };
+
+                recObj._isActiveRow = this.isMonitoringRowActive(recObj);
+                records.push(recObj);
             }
 
             return this.applyLocalSavedEdits('monitoring', gid, records);
@@ -891,7 +1027,6 @@
             if (memberSelect) memberSelect.addEventListener('change', triggerFilter);
             if (dateSelect) dateSelect.addEventListener('change', triggerFilter);
 
-            // Initial load (Kec. Situbondo gid=670201195)
             this.loadKalenderSheet(this.currentKalenderGid, this.currentKalenderTabType, false);
         },
 
@@ -942,7 +1077,6 @@
                         self.populateKalenderDateFilter(records);
                         self.renderKalenderTaskTable(container, records, countBadge);
 
-                        // Notify Editor module (Phase 05) if active
                         window.dispatchEvent(new CustomEvent('webgis:kalender-data-loaded', {
                             detail: { gid: gid, records: records }
                         }));
@@ -1030,12 +1164,18 @@
         },
 
         /**
-         * Render Kecamatan Task Table using Tabulator (or clean table fallback)
+         * Render Kecamatan Task Table using Tabulator (including Jumlah Bidang Peranggota after Pembagian)
          */
         renderKalenderTaskTable: function (container, records, countBadge) {
             if (!container) return;
             if (countBadge) {
-                countBadge.textContent = records.length + ' Baris Tugas';
+                var totalBidangSum = 0;
+                records.forEach(function (r) {
+                    totalBidangSum += (Number(r.jumlahBidangAnggotaNum) || 0);
+                });
+                countBadge.textContent = totalBidangSum > 0
+                    ? (records.length + ' Baris • ' + totalBidangSum + ' Bidang')
+                    : (records.length + ' Baris Tugas');
             }
 
             if (typeof Tabulator !== 'undefined') {
@@ -1056,12 +1196,12 @@
                         }
                     },
                     columns: [
-                        { title: 'No', field: 'no', width: 62, hozAlign: 'center', headerHozAlign: 'center', frozen: true },
-                        { title: 'Tanggal Survei', field: 'tanggal', minWidth: 135, editor: 'input', editable: canEditKalender },
+                        { title: 'No', field: 'no', width: 58, hozAlign: 'center', headerHozAlign: 'center', frozen: true },
+                        { title: 'Tanggal Survei', field: 'tanggal', minWidth: 130, editor: 'input', editable: canEditKalender },
                         {
                             title: 'Desa / Kelurahan',
                             field: 'desa',
-                            minWidth: 145,
+                            minWidth: 135,
                             editor: 'input',
                             editable: canEditKalender,
                             formatter: function (cell) {
@@ -1072,7 +1212,7 @@
                         {
                             title: 'Nama Anggota',
                             field: 'namaAnggota',
-                            minWidth: 210,
+                            minWidth: 200,
                             formatter: function (cell) {
                                 return '<span style="font-weight:600;">' + window.WebGISApp.escapeHtml(cell.getValue()) + '</span>';
                             }
@@ -1080,7 +1220,7 @@
                         {
                             title: 'Pembagian Bidang / Tugas',
                             field: 'pembagian',
-                            minWidth: 230,
+                            minWidth: 220,
                             editor: 'input',
                             editable: canEditKalender,
                             formatter: function (cell) {
@@ -1092,12 +1232,29 @@
                                     window.WebGISApp.escapeHtml(v) + '</span>';
                             }
                         },
-                        { title: 'Total Bidang Desa', field: 'totalBidang', minWidth: 165, editor: 'input', editable: canEditKalender },
-                        { title: 'PIC Kecamatan', field: 'pic', minWidth: 155, editor: 'input', editable: canEditKalender },
+                        {
+                            title: 'Jml Bidang / Anggota',
+                            field: 'jumlahBidangAnggota',
+                            minWidth: 145,
+                            hozAlign: 'center',
+                            headerHozAlign: 'center',
+                            editor: 'input',
+                            editable: canEditKalender,
+                            formatter: function (cell) {
+                                var v = cell.getValue();
+                                if (!v || v === '-') {
+                                    return '<span style="color:var(--text-light);">-</span>';
+                                }
+                                return '<span class="badge badge-success" style="font-weight:700;">' +
+                                    window.WebGISApp.escapeHtml(v) + ' Bidang</span>';
+                            }
+                        },
+                        { title: 'Total Bidang Desa', field: 'totalBidang', minWidth: 155, editor: 'input', editable: canEditKalender },
+                        { title: 'PIC Kecamatan', field: 'pic', minWidth: 145, editor: 'input', editable: canEditKalender },
                         {
                             title: 'Peta Kerja (My Maps)',
                             field: 'link',
-                            minWidth: 155,
+                            minWidth: 145,
                             hozAlign: 'center',
                             editor: 'input',
                             editable: canEditKalender,
@@ -1105,7 +1262,9 @@
                                 var raw = cell.getValue() || '';
                                 var urlMatch = raw.match(/https?:\/\/[^\s]+/);
                                 if (!urlMatch) {
-                                    return '<span style="color:var(--text-light);">-</span>';
+                                    return raw && raw !== '-'
+                                        ? '<span style="font-size:0.73rem;color:var(--text-secondary);">' + window.WebGISApp.escapeHtml(raw) + '</span>'
+                                        : '<span style="color:var(--text-light);">-</span>';
                                 }
                                 return '<a href="' + window.WebGISApp.escapeHtml(urlMatch[0]) + '" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm" style="padding:0.22rem 0.55rem;font-size:0.73rem;">' +
                                     '<i class="fas fa-map-marked-alt" style="color:var(--accent-600);"></i><span>Buka Peta</span></a>';
@@ -1120,7 +1279,6 @@
                     }
                 });
             } else {
-                // Fallback standard HTML table if Tabulator CDN is unreachable
                 this.renderCleanHtmlTaskTable(container, records);
             }
         },
@@ -1141,7 +1299,7 @@
                     return false;
                 }
                 if (q) {
-                    var hay = (item.no + ' ' + item.pic + ' ' + item.namaAnggota + ' ' + item.kegiatan + ' ' + item.tanggal + ' ' + item.desa + ' ' + item.totalBidang + ' ' + item.pembagian).toLowerCase();
+                    var hay = (item.no + ' ' + item.pic + ' ' + item.namaAnggota + ' ' + item.kegiatan + ' ' + item.tanggal + ' ' + item.desa + ' ' + item.totalBidang + ' ' + item.pembagian + ' ' + item.jumlahBidangAnggota).toLowerCase();
                     if (hay.indexOf(q) === -1) return false;
                 }
                 return true;
@@ -1149,7 +1307,13 @@
 
             var countBadge = document.getElementById('kalenderRowCountBadge');
             if (countBadge) {
-                countBadge.textContent = filtered.length + ' / ' + this.currentKalenderRecords.length + ' Baris';
+                var sumFilteredBidang = 0;
+                filtered.forEach(function (r) {
+                    sumFilteredBidang += (Number(r.jumlahBidangAnggotaNum) || 0);
+                });
+                countBadge.textContent = sumFilteredBidang > 0
+                    ? (filtered.length + ' Baris • ' + sumFilteredBidang + ' Bidang')
+                    : (filtered.length + ' / ' + this.currentKalenderRecords.length + ' Baris');
             }
 
             if (this.kalenderTable && typeof this.kalenderTable.replaceData === 'function') {
@@ -1180,7 +1344,8 @@
                             '<th>Desa / Kelurahan</th>' +
                             '<th>Nama Anggota</th>' +
                             '<th>Pembagian Bidang</th>' +
-                            '<th>Total Bidang</th>' +
+                            '<th>Jml Bidang / Anggota</th>' +
+                            '<th>Total Bidang Desa</th>' +
                             '<th>PIC</th>' +
                             '<th>Peta Kerja</th>' +
                         '</tr>' +
@@ -1191,6 +1356,10 @@
                 var urlMatch = (r.link || '').match(/https?:\/\/[^\s]+/);
                 var linkHtml = urlMatch
                     ? '<a href="' + window.WebGISApp.escapeHtml(urlMatch[0]) + '" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm" style="padding:0.2rem 0.5rem;font-size:0.72rem;"><i class="fas fa-map-pin"></i> Peta</a>'
+                    : (r.link && r.link !== '-' ? '<span style="font-size:0.72rem;color:var(--text-secondary);">' + window.WebGISApp.escapeHtml(r.link) + '</span>' : '-');
+
+                var jmlBadge = (r.jumlahBidangAnggota && r.jumlahBidangAnggota !== '-')
+                    ? '<span class="badge badge-success" style="font-weight:700;">' + window.WebGISApp.escapeHtml(r.jumlahBidangAnggota) + ' Bidang</span>'
                     : '-';
 
                 html +=
@@ -1200,6 +1369,7 @@
                         '<td><strong style="color:var(--navy-700);">' + window.WebGISApp.escapeHtml(r.desa) + '</strong></td>' +
                         '<td style="font-weight:600;">' + window.WebGISApp.escapeHtml(r.namaAnggota) + '</td>' +
                         '<td><span class="badge badge-info">' + window.WebGISApp.escapeHtml(r.pembagian) + '</span></td>' +
+                        '<td style="text-align:center;">' + jmlBadge + '</td>' +
                         '<td>' + window.WebGISApp.escapeHtml(r.totalBidang) + '</td>' +
                         '<td>' + window.WebGISApp.escapeHtml(r.pic) + '</td>' +
                         '<td>' + linkHtml + '</td>' +
@@ -1301,7 +1471,7 @@
                     self.updateMonitoringKpiCards(records);
                     self.renderMonitoringTable(container, records, countBadge);
 
-                    // Notify Chart module (Phase 06) & Editor module (Phase 05)
+                    // Notify Chart module & Editor module
                     window.dispatchEvent(new CustomEvent('webgis:monitoring-data-loaded', {
                         detail: { gid: gid, records: records }
                     }));
@@ -1322,45 +1492,65 @@
 
         /**
          * Calculate and update the 4 KPI summary cards on monitoring.html
+         * Incorporates Jumlah Bidang & Jumlah Bidang Yang Dikerjakan
          */
         updateMonitoringKpiCards: function (records) {
             var self = this;
-            var activeRows = records.filter(function (r) {
-                return (r.kegiatan && r.kegiatan !== '-') || (r.status && r.status !== 'Belum Diisi') || r.capaianPersenRaw !== '';
+            var activeRows = (records || []).filter(function (r) {
+                return self.isMonitoringRowActive(r);
             });
-            var evalRows = activeRows.length > 0 ? activeRows : records;
+            var evalRows = activeRows.length > 0 ? activeRows : (records || []);
 
             var tercapaiCount = evalRows.filter(function (r) {
                 return r._isAchieved !== undefined ? r._isAchieved : self.isStatusTercapai(r.status);
             }).length;
 
+            var totalBidangTarget = 0;
+            var totalBidangDikerjakan = 0;
             var sumPersen = 0;
+
             evalRows.forEach(function (r) {
-                sumPersen += r.capaianNilai;
+                totalBidangTarget += (Number(r.jumlahBidang) || 0);
+                totalBidangDikerjakan += (Number(r.jumlahDikerjakan) || 0);
+                sumPersen += (Number(r.capaianNilai) || 0);
             });
-            var avgPersen = evalRows.length > 0 ? Math.round(sumPersen / evalRows.length) : 0;
+
+            var avgPersen = totalBidangTarget > 0
+                ? Math.round((totalBidangDikerjakan / totalBidangTarget) * 1000) / 10
+                : (evalRows.length > 0 ? Math.round((sumPersen / evalRows.length) * 10) / 10 : 0);
 
             var uniqueMembers = {};
-            records.forEach(function (r) {
+            (records || []).forEach(function (r) {
                 if (r.nama) uniqueMembers[r.nama] = true;
             });
             var memberCount = Object.keys(uniqueMembers).length || 8;
 
             var elTarget = document.getElementById('monKpiTotalTarget');
+            var elTargetSub = document.getElementById('monKpiTargetSub');
             var elRealisasi = document.getElementById('monKpiTotalRealisasi');
+            var elRealisasiSub = document.getElementById('monKpiRealisasiSub');
             var elRata = document.getElementById('monKpiRataCapaian');
             var elFill = document.getElementById('monKpiProgressFill');
             var elAnggota = document.getElementById('monKpiJumlahAnggota');
 
-            if (elTarget) elTarget.textContent = evalRows.length + ' Target Tugas';
-            if (elRealisasi) elRealisasi.textContent = tercapaiCount + ' / ' + evalRows.length + ' Tercapai';
+            if (totalBidangTarget > 0) {
+                if (elTarget) elTarget.textContent = totalBidangTarget + ' Bidang';
+                if (elTargetSub) elTargetSub.textContent = evalRows.length + ' Target Tugas Anggota';
+                if (elRealisasi) elRealisasi.textContent = totalBidangDikerjakan + ' / ' + totalBidangTarget + ' Bidang';
+                if (elRealisasiSub) elRealisasiSub.textContent = tercapaiCount + ' / ' + evalRows.length + ' Anggota Tercapai';
+            } else {
+                if (elTarget) elTarget.textContent = evalRows.length + ' Target Tugas';
+                if (elRealisasi) elRealisasi.textContent = tercapaiCount + ' / ' + evalRows.length + ' Tercapai';
+            }
+
             if (elRata) elRata.textContent = avgPersen + '%';
-            if (elFill) elFill.style.width = avgPersen + '%';
+            if (elFill) elFill.style.width = Math.min(100, avgPersen) + '%';
             if (elAnggota) elAnggota.textContent = memberCount + ' Anggota';
         },
 
         /**
          * Render Monitoring interactive table via Tabulator
+         * Includes Jumlah Bidang, Jumlah Bidang Yang Dikerjakan, Capaian (%), Status, Catatan Anggota, & Catatan Mentor
          */
         renderMonitoringTable: function (container, records, countBadge) {
             if (!container) return;
@@ -1389,7 +1579,7 @@
                         {
                             title: 'Minggu',
                             field: 'mingguKe',
-                            width: 90,
+                            width: 88,
                             hozAlign: 'center',
                             headerHozAlign: 'center',
                             frozen: true,
@@ -1397,32 +1587,63 @@
                                 return '<span class="badge badge-info">Minggu ' + window.WebGISApp.escapeHtml(cell.getValue()) + '</span>';
                             }
                         },
-                        { title: 'Tanggal Mulai', field: 'tanggalMulai', minWidth: 165, editor: 'input', editable: canEditMonitoring },
+                        { title: 'Tanggal Mulai', field: 'tanggalMulai', minWidth: 155, editor: 'input', editable: canEditMonitoring },
                         {
                             title: 'Nama Anggota',
                             field: 'nama',
-                            minWidth: 210,
+                            minWidth: 200,
                             formatter: function (cell) {
                                 return '<strong style="color:var(--text-primary);">' + window.WebGISApp.escapeHtml(cell.getValue()) + '</strong>';
                             }
                         },
-                        { title: 'Kegiatan Survei / Monitoring', field: 'kegiatan', minWidth: 230, editor: 'input', editable: canEditMonitoring },
-                        { title: 'Target Dicapai Minggu Ini', field: 'targetMingguIni', minWidth: 185, editor: 'input', editable: canEditMonitoring },
-                        { title: 'Target Minggu Depan', field: 'targetMingguDepan', minWidth: 175, editor: 'input', editable: canEditMonitoring },
+                        { title: 'Kegiatan Survei / Monitoring', field: 'kegiatan', minWidth: 210, editor: 'input', editable: canEditMonitoring },
+                        { title: 'Target Dicapai Minggu Ini', field: 'targetMingguIni', minWidth: 175, editor: 'input', editable: canEditMonitoring },
+                        { title: 'Target Minggu Depan', field: 'targetMingguDepan', minWidth: 165, editor: 'input', editable: canEditMonitoring },
+                        {
+                            title: 'Jumlah Bidang',
+                            field: 'jumlahBidang',
+                            minWidth: 125,
+                            hozAlign: 'center',
+                            headerHozAlign: 'center',
+                            editor: 'number',
+                            editable: canEditMonitoring,
+                            formatter: function (cell) {
+                                var val = Number(cell.getValue()) || 0;
+                                return val > 0
+                                    ? '<strong>' + val + ' Bidang</strong>'
+                                    : '<span style="color:var(--text-light);">-</span>';
+                            }
+                        },
+                        {
+                            title: 'Bidang Dikerjakan',
+                            field: 'jumlahDikerjakan',
+                            minWidth: 140,
+                            hozAlign: 'center',
+                            headerHozAlign: 'center',
+                            editor: 'number',
+                            editable: canEditMonitoring,
+                            formatter: function (cell) {
+                                var rowData = cell.getRow().getData();
+                                var targetVal = Number(rowData.jumlahBidang) || 0;
+                                var doneVal = Number(cell.getValue()) || 0;
+                                if (targetVal === 0 && doneVal === 0 && !rowData.jumlahDikerjakanRaw) {
+                                    return '<span style="color:var(--text-light);">-</span>';
+                                }
+                                var badgeClass = doneVal >= targetVal && targetVal > 0 ? 'badge-success' : (doneVal > 0 ? 'badge-warning' : 'badge-danger');
+                                return '<span class="badge ' + badgeClass + '" style="font-weight:700;">' + doneVal + (targetVal > 0 ? (' / ' + targetVal) : '') + ' Bidang</span>';
+                            }
+                        },
                         {
                             title: 'Capaian (%)',
                             field: 'capaianNilai',
                             minWidth: 145,
                             hozAlign: 'left',
-                            editor: 'number',
-                            editable: canEditMonitoring,
-                            editorParams: { min: 0, max: 100, step: 5 },
                             formatter: function (cell) {
                                 var val = Number(cell.getValue()) || 0;
                                 return (
                                     '<div class="cell-progress-wrap">' +
                                         '<div class="cell-progress-track">' +
-                                            '<div class="cell-progress-bar" style="width:' + val + '%;"></div>' +
+                                            '<div class="cell-progress-bar" style="width:' + Math.min(100, val) + '%;"></div>' +
                                         '</div>' +
                                         '<strong style="font-size:0.76rem;min-width:36px;text-align:right;">' + val + '%</strong>' +
                                     '</div>'
@@ -1451,7 +1672,8 @@
                                 return '<span class="badge badge-neutral">' + window.WebGISApp.escapeHtml(v) + '</span>';
                             }
                         },
-                        { title: 'Catatan Mentor', field: 'catatanMentor', minWidth: 175, editor: 'input', editable: canEditMonitoring }
+                        { title: 'Catatan Anggota', field: 'catatanAnggota', minWidth: 200, editor: 'input', editable: canEditMonitoring },
+                        { title: 'Catatan Mentor', field: 'catatanMentor', minWidth: 170, editor: 'input', editable: canEditMonitoring }
                     ]
                 });
 
@@ -1482,10 +1704,11 @@
                             '<th>Tanggal Mulai</th>' +
                             '<th>Nama Anggota</th>' +
                             '<th>Kegiatan</th>' +
-                            '<th>Target Minggu Ini</th>' +
-                            '<th>Target Minggu Depan</th>' +
+                            '<th>Jumlah Bidang</th>' +
+                            '<th>Bidang Dikerjakan</th>' +
                             '<th>Capaian (%)</th>' +
                             '<th>Status</th>' +
+                            '<th>Catatan Anggota</th>' +
                             '<th>Catatan Mentor</th>' +
                         '</tr>' +
                     '</thead>' +
@@ -1500,22 +1723,28 @@
                         ? '<span class="badge badge-danger">' + window.WebGISApp.escapeHtml(r.status) + '</span>'
                         : '<span class="badge badge-neutral">' + window.WebGISApp.escapeHtml(r.status) + '</span>');
 
+                var jmlBidangTxt = r.jumlahBidang > 0 ? (r.jumlahBidang + ' Bidang') : '-';
+                var dikerjakanTxt = (r.jumlahBidang > 0 || r.jumlahDikerjakan > 0)
+                    ? (r.jumlahDikerjakan + ' / ' + r.jumlahBidang + ' Bidang')
+                    : '-';
+
                 html +=
                     '<tr class="' + (r._isGroupStart ? 'row-group-divider' : '') + '">' +
                         '<td><span class="badge badge-info">Minggu ' + window.WebGISApp.escapeHtml(r.mingguKe) + '</span></td>' +
                         '<td>' + window.WebGISApp.escapeHtml(r.tanggalMulai) + '</td>' +
                         '<td><strong>' + window.WebGISApp.escapeHtml(r.nama) + '</strong></td>' +
                         '<td>' + window.WebGISApp.escapeHtml(r.kegiatan) + '</td>' +
-                        '<td>' + window.WebGISApp.escapeHtml(r.targetMingguIni) + '</td>' +
-                        '<td>' + window.WebGISApp.escapeHtml(r.targetMingguDepan) + '</td>' +
+                        '<td style="text-align:center;font-weight:600;">' + jmlBidangTxt + '</td>' +
+                        '<td style="text-align:center;font-weight:700;">' + dikerjakanTxt + '</td>' +
                         '<td>' +
                             '<div class="cell-progress-wrap">' +
-                                '<div class="cell-progress-track"><div class="cell-progress-bar" style="width:' + val + '%;"></div></div>' +
+                                '<div class="cell-progress-track"><div class="cell-progress-bar" style="width:' + Math.min(100, val) + '%;"></div></div>' +
                                 '<strong style="font-size:0.76rem;">' + val + '%</strong>' +
                             '</div>' +
                         '</td>' +
                         '<td>' + statusBadge + '</td>' +
-                        '<td>' + window.WebGISApp.escapeHtml(r.catatanMentor) + '</td>' +
+                        '<td>' + window.WebGISApp.escapeHtml(r.catatanAnggota || '-') + '</td>' +
+                        '<td>' + window.WebGISApp.escapeHtml(r.catatanMentor || '-') + '</td>' +
                     '</tr>';
             });
 
@@ -1537,12 +1766,12 @@
                 if (weekVal && String(item.mingguKe) !== String(weekVal)) return false;
                 if (memberVal && item.nama !== memberVal) return false;
                 if (statusVal) {
-                    var isOk = self.isStatusTercapai(item.status);
+                    var isOk = item._isAchieved !== undefined ? item._isAchieved : self.isStatusTercapai(item.status);
                     if (statusVal === 'tercapai' && !isOk) return false;
                     if (statusVal === 'belum' && isOk) return false;
                 }
                 if (q) {
-                    var hay = (item.mingguKe + ' ' + item.tanggalMulai + ' ' + item.nama + ' ' + item.kegiatan + ' ' + item.targetMingguIni + ' ' + item.status + ' ' + item.catatanMentor).toLowerCase();
+                    var hay = (item.mingguKe + ' ' + item.tanggalMulai + ' ' + item.nama + ' ' + item.kegiatan + ' ' + item.targetMingguIni + ' ' + item.status + ' ' + item.catatanAnggota + ' ' + item.catatanMentor).toLowerCase();
                     if (hay.indexOf(q) === -1) return false;
                 }
                 return true;
@@ -1575,7 +1804,7 @@
                 });
             }
 
-            // Load Spreadsheet 1 preview (Kec.Situbondo gid=670201195)
+            // Load Spreadsheet 1 preview (Kec.Situbondo gid=368658062)
             this.fetchGvizTable(CONFIG.spreadsheets.kalender.id, CONFIG.spreadsheets.kalender.defaultGid, forceRefresh)
                 .then(function (gvizTable) {
                     var records = self.parseTaskTableData(gvizTable, CONFIG.spreadsheets.kalender.defaultGid);
@@ -1601,25 +1830,46 @@
 
                     // Update Dashboard KPI Cards
                     var activeRows = records.filter(function (r) {
-                        return (r.kegiatan && r.kegiatan !== '-') || (r.status && r.status !== 'Belum Diisi') || r.capaianPersenRaw !== '';
+                        return self.isMonitoringRowActive(r);
                     });
                     var evalRows = activeRows.length > 0 ? activeRows : records;
                     var tercapaiCount = evalRows.filter(function (r) {
                         return r._isAchieved !== undefined ? r._isAchieved : self.isStatusTercapai(r.status);
                     }).length;
+
+                    var totalBidangTarget = 0;
+                    var totalBidangDikerjakan = 0;
                     var sumP = 0;
-                    evalRows.forEach(function (r) { sumP += r.capaianNilai; });
-                    var avgP = evalRows.length > 0 ? Math.round(sumP / evalRows.length) : 0;
+
+                    evalRows.forEach(function (r) {
+                        totalBidangTarget += (Number(r.jumlahBidang) || 0);
+                        totalBidangDikerjakan += (Number(r.jumlahDikerjakan) || 0);
+                        sumP += (Number(r.capaianNilai) || 0);
+                    });
+
+                    var avgP = totalBidangTarget > 0
+                        ? Math.round((totalBidangDikerjakan / totalBidangTarget) * 1000) / 10
+                        : (evalRows.length > 0 ? Math.round((sumP / evalRows.length) * 10) / 10 : 0);
 
                     var kpiTarget = document.getElementById('kpiTotalTarget');
+                    var kpiTargetSub = document.getElementById('kpiTargetSubtext');
                     var kpiReal = document.getElementById('kpiTotalRealisasi');
+                    var kpiRealSub = document.getElementById('kpiRealisasiSubtext');
                     var kpiPersen = document.getElementById('kpiPersentaseCapaian');
                     var kpiFill = document.getElementById('kpiProgressFill');
 
-                    if (kpiTarget) kpiTarget.textContent = evalRows.length + ' Target';
-                    if (kpiReal) kpiReal.textContent = tercapaiCount + ' / ' + evalRows.length + ' Tercapai';
+                    if (totalBidangTarget > 0) {
+                        if (kpiTarget) kpiTarget.textContent = totalBidangTarget + ' Bidang';
+                        if (kpiTargetSub) kpiTargetSub.textContent = evalRows.length + ' Target Anggota';
+                        if (kpiReal) kpiReal.textContent = totalBidangDikerjakan + ' / ' + totalBidangTarget + ' Bidang';
+                        if (kpiRealSub) kpiRealSub.textContent = tercapaiCount + ' / ' + evalRows.length + ' Tercapai';
+                    } else {
+                        if (kpiTarget) kpiTarget.textContent = evalRows.length + ' Target';
+                        if (kpiReal) kpiReal.textContent = tercapaiCount + ' / ' + evalRows.length + ' Tercapai';
+                    }
+
                     if (kpiPersen) kpiPersen.textContent = avgP + '%';
-                    if (kpiFill) kpiFill.style.width = avgP + '%';
+                    if (kpiFill) kpiFill.style.width = Math.min(100, avgP) + '%';
 
                     window.dispatchEvent(new CustomEvent('webgis:monitoring-data-loaded', {
                         detail: { gid: gid, records: records }
