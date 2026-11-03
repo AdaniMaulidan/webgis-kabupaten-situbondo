@@ -580,6 +580,40 @@
         },
 
         /**
+         * Resolve Google Sheets Smart Chip / Rich-Text link labels (e.g. "SURVEI_WAKAF_DAWUHAN")
+         * or Desa names to their full clickable Google My Maps URL.
+         */
+        resolveTaskMapLink: function (rawLink, desaName) {
+            var linkStr = String(rawLink || '').trim();
+            var urlMatch = linkStr.match(/https?:\/\/[^\s"<>]+/);
+            if (urlMatch) {
+                return urlMatch[0];
+            }
+
+            var knownLinks = {
+                'survei_wakaf_dawuhan': 'https://www.google.com/maps/d/u/0/edit?mid=1VGvdu66Qgd0zMBqnU4iBnlUEvH2st0A&ll=-7.691288350552355%2C114.00456299999999&z=15',
+                'dawuhan': 'https://www.google.com/maps/d/u/0/edit?mid=1VGvdu66Qgd0zMBqnU4iBnlUEvH2st0A&ll=-7.691288350552355%2C114.00456299999999&z=15',
+                'patokan': 'https://www.google.com/maps/d/u/0/edit?mid=1l5nXrLZiw3ODJtx3jaJYVyiEdUXGn6s&usp=sharing',
+                'kotakan': 'https://www.google.com/maps/d/u/0/edit?mid=1cPsVB25C7wdsEAqN12fxiNIUedUKrAQ&usp=sharing',
+                'talkandang': 'https://www.google.com/maps/d/edit?mid=1CrDS85v-rNjrNcK6J0u_o_wGaXO2s6s&usp=sharing',
+                'olean': 'https://www.google.com/maps/d/u/0/edit?mid=1mixjsmnLGYHUXnZK8QLYqf-x2_bYXjc&usp=sharing',
+                'kalibagor': 'https://www.google.com/maps/d/u/0/edit?mid=1Iv52TUlJWfK-prrtgBdyjnYgT4u2JMo&usp=sharing'
+            };
+
+            var lowerLink = linkStr.toLowerCase();
+            if (lowerLink && knownLinks[lowerLink]) {
+                return knownLinks[lowerLink];
+            }
+
+            var lowerDesa = String(desaName || '').trim().toLowerCase();
+            if (lowerLink && lowerDesa && knownLinks[lowerDesa]) {
+                return knownLinks[lowerDesa];
+            }
+
+            return linkStr;
+        },
+
+        /**
          * Parse Spreadsheet 1 Kecamatan Task Table (e.g., Kec.Situbondo gid=368658062)
          * Dynamically detects column positions including the new "Jumlah Bidang Peranggota"
          * column placed after "Pembagian", while preserving 8-member merged blocks per 'No'.
@@ -699,6 +733,7 @@
                     : rawNama;
 
                 var parsedJumlahAnggotaNum = this.parseNumericCell(rawJumlahAnggota);
+                var resolvedLink = this.resolveTaskMapLink(rawLink || currentGroup.link || '', currentGroup.desa);
 
                 records.push({
                     id: gid + '_row_' + sheetRowNumber,
@@ -718,7 +753,7 @@
                     pembagian: rawPembagian || '-',
                     jumlahBidangAnggota: rawJumlahAnggota !== '' ? rawJumlahAnggota : '-',
                     jumlahBidangAnggotaNum: parsedJumlahAnggotaNum !== null ? parsedJumlahAnggotaNum : 0,
-                    link: rawLink || currentGroup.link || '',
+                    link: resolvedLink,
                     _raw: {
                         no: rawNo,
                         pic: rawPic,

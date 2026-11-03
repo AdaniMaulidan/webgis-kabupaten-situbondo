@@ -46,12 +46,13 @@
         },
 
         /**
-         * Bind Week Filter & Sort Order selectors on monitoring.html
+         * Bind Week Filter & Sort Order selectors on monitoring.html and index.html
          */
         bindChartControls: function () {
             var self = this;
             var weekFilterEl = document.getElementById('monitoringChartWeekFilter');
             var sortSelectEl = document.getElementById('monitoringChartSortSelect');
+            var dashWeekFilterEl = document.getElementById('dashboardWeekFilter');
 
             if (weekFilterEl) {
                 weekFilterEl.addEventListener('change', function () {
@@ -70,6 +71,12 @@
             if (sortSelectEl) {
                 sortSelectEl.addEventListener('change', function () {
                     self.refreshMonitoringPageChart();
+                });
+            }
+
+            if (dashWeekFilterEl) {
+                dashWeekFilterEl.addEventListener('change', function () {
+                    self.refreshDashboardPageChart(self.latestRecords, self.latestGid);
                 });
             }
         },
@@ -107,12 +114,12 @@
 
         /**
          * Update week filter dropdown labels with actual Tanggal Mulai from spreadsheet
+         * Applies to both monitoring.html (#monitoringChartWeekFilter) and index.html (#dashboardWeekFilter)
          * @param {Array<Object>} records
          */
         updateWeekDropdownLabels: function (records) {
             var self = this;
-            var weekSelect = document.getElementById('monitoringChartWeekFilter');
-            if (!weekSelect || !Array.isArray(records)) return;
+            if (!Array.isArray(records)) return;
 
             var weekDates = {};
             var weekActiveCount = {};
@@ -128,19 +135,24 @@
                 }
             });
 
-            var currentVal = weekSelect.value || '1';
-            var options = weekSelect.querySelectorAll('option');
-            options.forEach(function (opt) {
-                var val = opt.value;
-                if (val === 'all') {
-                    opt.textContent = 'Semua Minggu (Rata-rata Bulan Aktif)';
-                } else {
-                    var dateStr = weekDates[val] ? ' (' + weekDates[val] + ')' : '';
-                    var statusTag = weekActiveCount[val] ? ' — Terisi' : ' — Belum Diisi';
-                    opt.textContent = 'Minggu ke-' + val + dateStr + statusTag;
-                }
+            ['monitoringChartWeekFilter', 'dashboardWeekFilter'].forEach(function (selectId) {
+                var weekSelect = document.getElementById(selectId);
+                if (!weekSelect) return;
+
+                var currentVal = weekSelect.value || '1';
+                var options = weekSelect.querySelectorAll('option');
+                options.forEach(function (opt) {
+                    var val = opt.value;
+                    if (val === 'all') {
+                        opt.textContent = 'Semua Minggu (Rata-rata Bulan Aktif)';
+                    } else {
+                        var dateStr = weekDates[val] ? ' (' + weekDates[val] + ')' : '';
+                        var statusTag = weekActiveCount[val] ? ' — Terisi' : ' — Belum Diisi';
+                        opt.textContent = 'Minggu ke-' + val + dateStr + statusTag;
+                    }
+                });
+                weekSelect.value = currentVal;
             });
-            weekSelect.value = currentVal;
         },
 
         /**
@@ -387,6 +399,7 @@
 
         /**
          * Refresh Bar Chart & KPI Cards on index.html (Dashboard Utama)
+         * Supports per-week filtering via #dashboardWeekFilter
          * @param {Array<Object>} records
          * @param {string} gid
          */
@@ -396,16 +409,25 @@
             var container = document.getElementById('dashboardChartContainer');
             if (!canvas || !container) return;
 
-            var aggregated = this.aggregateMemberMetrics(records, 'all', 'default');
+            var dashWeekEl = document.getElementById('dashboardWeekFilter');
+            var weekVal = dashWeekEl ? dashWeekEl.value : '1';
+            var sourceRecords = Array.isArray(records) && records.length > 0 ? records : this.latestRecords;
+
+            var aggregated = this.aggregateMemberMetrics(sourceRecords, weekVal, 'default');
             var s = aggregated.summary;
 
-            // Sync Dashboard KPI Cards
+            // Sync Dashboard KPI Cards with selected week
             var kpiTarget = document.getElementById('kpiTotalTarget');
             var kpiTargetSub = document.getElementById('kpiTargetSubtext');
+            var kpiPeriodBadge = document.getElementById('kpiPeriodBadge');
             var kpiReal = document.getElementById('kpiTotalRealisasi');
             var kpiPersen = document.getElementById('kpiPersentaseCapaian');
             var kpiFill = document.getElementById('kpiProgressFill');
             var kpiRealSub = document.getElementById('kpiRealisasiSubtext');
+
+            if (kpiPeriodBadge) {
+                kpiPeriodBadge.textContent = weekVal === 'all' ? 'Semua Minggu' : ('Minggu ke-' + weekVal);
+            }
 
             if (s.totalBidangTarget > 0) {
                 if (kpiTarget) kpiTarget.textContent = s.totalBidangTarget + ' Bidang';
@@ -414,6 +436,7 @@
                 if (kpiRealSub) kpiRealSub.textContent = s.totalRealisasi + ' / ' + s.totalTarget + ' Anggota Tercapai';
             } else {
                 if (kpiTarget) kpiTarget.textContent = s.totalTarget + ' Target Tugas';
+                if (kpiTargetSub) kpiTargetSub.textContent = s.activeLabel;
                 if (kpiReal) kpiReal.textContent = s.totalRealisasi + ' / ' + s.totalTarget + ' Tercapai';
                 if (kpiRealSub) kpiRealSub.textContent = s.activeLabel;
             }
