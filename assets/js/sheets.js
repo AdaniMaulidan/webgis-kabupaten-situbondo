@@ -770,41 +770,6 @@
                 });
             }
 
-            return this.applyLocalSavedEdits('kalender', gid, records);
-        },
-
-        /**
-         * Overlay any locally saved edits from Instant Editor Mode (localStorage)
-         */
-        applyLocalSavedEdits: function (sheetType, gid, records) {
-            var self = this;
-            try {
-                var saved = JSON.parse(localStorage.getItem('webgis_situbondo_local_edits') || '{}');
-                var keys = Object.keys(saved);
-                if (!keys.length) return records;
-
-                records.forEach(function (rec) {
-                    keys.forEach(function (k) {
-                        var edit = saved[k];
-                        if (!edit || edit.sheetType !== sheetType || String(edit.gid) !== String(gid)) return;
-                        if (String(edit.rowId) === String(rec.id)) {
-                            rec[edit.field] = edit.newValue;
-                            if (sheetType === 'monitoring') {
-                                var evalRes = self.evaluateMonitoringRow(
-                                    rec.status,
-                                    rec.capaianPersenRaw,
-                                    rec.jumlahBidangRaw,
-                                    rec.jumlahDikerjakanRaw
-                                );
-                                rec.capaianNilai = evalRes.capaianNilai;
-                                rec.jumlahBidang = evalRes.jumlahBidang;
-                                rec.jumlahDikerjakan = evalRes.jumlahDikerjakan;
-                                rec._isAchieved = evalRes.isAchieved;
-                            }
-                        }
-                    });
-                });
-            } catch (e) {}
             return records;
         },
 
@@ -1011,7 +976,7 @@
                 records.push(recObj);
             }
 
-            return this.applyLocalSavedEdits('monitoring', gid, records);
+            return records;
         },
 
         /* ======================================================================
@@ -1215,9 +1180,6 @@
 
             if (typeof Tabulator !== 'undefined') {
                 container.innerHTML = '';
-                var canEditKalender = function (cell) {
-                    return !!(window.WebGISEditor && window.WebGISEditor.canEditCell('kalender', cell));
-                };
 
                 this.kalenderTable = new Tabulator(container, {
                     data: records,
@@ -1232,13 +1194,11 @@
                     },
                     columns: [
                         { title: 'No', field: 'no', width: 58, hozAlign: 'center', headerHozAlign: 'center', frozen: true },
-                        { title: 'Tanggal Survei', field: 'tanggal', minWidth: 130, editor: 'input', editable: canEditKalender },
+                        { title: 'Tanggal Survei', field: 'tanggal', minWidth: 130 },
                         {
                             title: 'Desa / Kelurahan',
                             field: 'desa',
                             minWidth: 135,
-                            editor: 'input',
-                            editable: canEditKalender,
                             formatter: function (cell) {
                                 var val = cell.getValue() || '-';
                                 return '<strong style="color:var(--navy-700);">' + window.WebGISApp.escapeHtml(val) + '</strong>';
@@ -1256,8 +1216,6 @@
                             title: 'Pembagian Bidang / Tugas',
                             field: 'pembagian',
                             minWidth: 220,
-                            editor: 'input',
-                            editable: canEditKalender,
                             formatter: function (cell) {
                                 var v = cell.getValue();
                                 if (!v || v === '-') {
@@ -1273,8 +1231,6 @@
                             minWidth: 145,
                             hozAlign: 'center',
                             headerHozAlign: 'center',
-                            editor: 'input',
-                            editable: canEditKalender,
                             formatter: function (cell) {
                                 var v = cell.getValue();
                                 if (!v || v === '-') {
@@ -1284,15 +1240,13 @@
                                     window.WebGISApp.escapeHtml(v) + ' Bidang</span>';
                             }
                         },
-                        { title: 'Total Bidang Desa', field: 'totalBidang', minWidth: 155, editor: 'input', editable: canEditKalender },
-                        { title: 'PIC Kecamatan', field: 'pic', minWidth: 145, editor: 'input', editable: canEditKalender },
+                        { title: 'Total Bidang Desa', field: 'totalBidang', minWidth: 155 },
+                        { title: 'PIC Kecamatan', field: 'pic', minWidth: 145 },
                         {
                             title: 'Peta Kerja (My Maps)',
                             field: 'link',
                             minWidth: 145,
                             hozAlign: 'center',
-                            editor: 'input',
-                            editable: canEditKalender,
                             formatter: function (cell) {
                                 var raw = cell.getValue() || '';
                                 var urlMatch = raw.match(/https?:\/\/[^\s]+/);
@@ -1306,12 +1260,6 @@
                             }
                         }
                     ]
-                });
-
-                this.kalenderTable.on('cellEdited', function (cell) {
-                    if (window.WebGISEditor && typeof window.WebGISEditor.onKalenderCellEdited === 'function') {
-                        window.WebGISEditor.onKalenderCellEdited(cell);
-                    }
                 });
             } else {
                 this.renderCleanHtmlTaskTable(container, records);
@@ -1595,9 +1543,6 @@
 
             if (typeof Tabulator !== 'undefined') {
                 container.innerHTML = '';
-                var canEditMonitoring = function (cell) {
-                    return !!(window.WebGISEditor && window.WebGISEditor.canEditCell('monitoring', cell));
-                };
 
                 this.monitoringTable = new Tabulator(container, {
                     data: records,
@@ -1622,7 +1567,7 @@
                                 return '<span class="badge badge-info">Minggu ' + window.WebGISApp.escapeHtml(cell.getValue()) + '</span>';
                             }
                         },
-                        { title: 'Tanggal Mulai', field: 'tanggalMulai', minWidth: 155, editor: 'input', editable: canEditMonitoring },
+                        { title: 'Tanggal Mulai', field: 'tanggalMulai', minWidth: 155 },
                         {
                             title: 'Nama Anggota',
                             field: 'nama',
@@ -1631,17 +1576,15 @@
                                 return '<strong style="color:var(--text-primary);">' + window.WebGISApp.escapeHtml(cell.getValue()) + '</strong>';
                             }
                         },
-                        { title: 'Kegiatan Survei / Monitoring', field: 'kegiatan', minWidth: 210, editor: 'input', editable: canEditMonitoring },
-                        { title: 'Target Dicapai Minggu Ini', field: 'targetMingguIni', minWidth: 175, editor: 'input', editable: canEditMonitoring },
-                        { title: 'Target Minggu Depan', field: 'targetMingguDepan', minWidth: 165, editor: 'input', editable: canEditMonitoring },
+                        { title: 'Kegiatan Survei / Monitoring', field: 'kegiatan', minWidth: 210 },
+                        { title: 'Target Dicapai Minggu Ini', field: 'targetMingguIni', minWidth: 175 },
+                        { title: 'Target Minggu Depan', field: 'targetMingguDepan', minWidth: 165 },
                         {
                             title: 'Jumlah Bidang',
                             field: 'jumlahBidang',
                             minWidth: 125,
                             hozAlign: 'center',
                             headerHozAlign: 'center',
-                            editor: 'number',
-                            editable: canEditMonitoring,
                             formatter: function (cell) {
                                 var val = Number(cell.getValue()) || 0;
                                 return val > 0
@@ -1655,8 +1598,6 @@
                             minWidth: 140,
                             hozAlign: 'center',
                             headerHozAlign: 'center',
-                            editor: 'number',
-                            editable: canEditMonitoring,
                             formatter: function (cell) {
                                 var rowData = cell.getRow().getData();
                                 var targetVal = Number(rowData.jumlahBidang) || 0;
@@ -1690,9 +1631,6 @@
                             field: 'status',
                             minWidth: 125,
                             hozAlign: 'center',
-                            editor: 'list',
-                            editable: canEditMonitoring,
-                            editorParams: { values: ['Tercapai', 'Proses', 'Belum Tercapai'] },
                             formatter: function (cell) {
                                 var v = cell.getValue() || 'Belum Diisi';
                                 if (WebGISSheets.isStatusTercapai(v)) {
@@ -1707,15 +1645,9 @@
                                 return '<span class="badge badge-neutral">' + window.WebGISApp.escapeHtml(v) + '</span>';
                             }
                         },
-                        { title: 'Catatan Anggota', field: 'catatanAnggota', minWidth: 200, editor: 'input', editable: canEditMonitoring },
-                        { title: 'Catatan Mentor', field: 'catatanMentor', minWidth: 170, editor: 'input', editable: canEditMonitoring }
+                        { title: 'Catatan Anggota', field: 'catatanAnggota', minWidth: 200 },
+                        { title: 'Catatan Mentor', field: 'catatanMentor', minWidth: 170 }
                     ]
-                });
-
-                this.monitoringTable.on('cellEdited', function (cell) {
-                    if (window.WebGISEditor && typeof window.WebGISEditor.onMonitoringCellEdited === 'function') {
-                        window.WebGISEditor.onMonitoringCellEdited(cell);
-                    }
                 });
             } else {
                 this.renderCleanHtmlMonitoringTable(container, records);

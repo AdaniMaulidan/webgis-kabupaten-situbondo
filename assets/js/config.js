@@ -24,16 +24,6 @@ window.WEBGIS_CONFIG = {
     },
 
     /**
-     * Google OAuth 2.0 Configuration (Public Client ID Only — Zero Secret in Repo)
-     * Scope: Google Sheets Read/Write for Authorized Editors
-     */
-    oauth: {
-        clientId: '', // Diisi pada Phase 05 (Google Cloud Console Web OAuth Client ID)
-        scope: 'https://www.googleapis.com/auth/spreadsheets',
-        tokenStorageKey: 'webgis_situbondo_oauth_session'
-    },
-
-    /**
      * Verified Google Spreadsheets Configuration (Inspected in Phase 01 & Updated Schema)
      */
     spreadsheets: {
